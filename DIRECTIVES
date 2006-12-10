@@ -25,6 +25,11 @@
 
   Example: LDAPUserDirFilter "(&(uid=%v)(objectClass=posixAccount))"
 
+* LDAPUserDirHomeAttribute
+  The LDAP attribute containing the path to the user's home directory.
+
+  Example: LDAPUserDirHomeAttribute homeDirectory
+
 * LDAPUserDirSearchScope
   The LDAP search scope ("onelevel" or "subtree") that will be used when doing
   LDAP UserDir lookups.

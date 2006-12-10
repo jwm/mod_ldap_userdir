@@ -1,4 +1,4 @@
-mod_ldap_userdir v1.1.6
+mod_ldap_userdir v1.1.7
 =======================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
@@ -39,8 +39,8 @@ the source distribution.
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.6.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1.6
+* gzip -dc mod_ldap_userdir-1.1.7.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.7
 * ./configure --with-activate
 * make
 * make install
@@ -75,6 +75,15 @@ the source distribution.
 ==========
 4. Changes
 ==========
+
+v1.1.7:
+* Add LDAPUserDirHomeAttribute attribute instead of depending on a
+  build-time change to switch the homeDirectory attribute's name, loosely
+  based on code by O'Shaughnessy Evans <shaug@wumpus.org>.
+* Now running module/child init handlers for Apache 2, too.
+* Remove child exit handler; I can't find a good way to replicate this
+  with Apache 2's hooks and it's not really necessary anyway, since the
+  connection will be closed on child exit.
 
 v1.1.6:
 * Fix Apache 2-ism that crept into v1.1.5. Tohru Murakami

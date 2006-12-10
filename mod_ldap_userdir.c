@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.6
+ * mod_ldap_userdir v1.1.7
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -51,13 +51,6 @@
  * LDAPUserDir public_html /usr/web http://www.xyz.com/users
  */
 
-#ifndef LDAP_HOMEDIR_ATTR
-#define LDAP_HOMEDIR_ATTR "homeDirectory"
-#endif
-
-/* You should not have to change anything below. If you do, report it
- * as a bug.
- */
 
 #include "httpd.h"
 #include "http_config.h"
@@ -101,10 +94,6 @@
 #include <lber.h>
 #include <ldap.h>
 
-#ifndef DEFAULT_LDAP_USER_DIR
-# define DEFAULT_LDAP_USER_DIR "public_html"
-#endif
-
 /* Thanks, Sun. */
 #ifndef LDAP_OPT_SUCCESS
 # define LDAP_OPT_SUCCESS LDAP_SUCCESS
@@ -123,7 +112,7 @@ typedef struct ldap_userdir_config {
 	int ldap_usetls;
 #endif
 	char *ldap_server, *ldap_dn, *ldap_dnpass,
-	     *ldap_basedn, *ldap_filter_template;
+	     *ldap_basedn, *ldap_filter_template, *ldap_homeattr;
 	int ldap_searchscope;
 } ldap_userdir_config;
 
@@ -135,8 +124,9 @@ create_ldap_userdir_config(AP_POOL *p, server_rec *s)
 {
 	ldap_userdir_config *newcfg = (ldap_userdir_config *) AP_PCALLOC(p, sizeof(ldap_userdir_config));
 
-	newcfg->userdir = DEFAULT_LDAP_USER_DIR;
+	newcfg->userdir = "public_html";
 	newcfg->ldap_searchscope = LDAP_SCOPE_SUBTREE;
+	newcfg->ldap_homeattr = "homeDirectory";
 	return (void *)newcfg;
 }
 
@@ -245,15 +235,34 @@ set_ldap_usetls(cmd_parms *cmd, void *dummy, int arg)
 #endif /* TLS */
 }
 
+static const char *
+set_ldap_homeattr(cmd_parms *cmd, void *dummy, const char *arg)
+{
+	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
+
+	if (strlen(arg) == 0) {
+		return "LDAPUserDirHomeAttribute must be supplied with an attribute name, such as \"homeDirectory\"";
+	}
+
+	s_cfg->ldap_homeattr = AP_PSTRDUP(cmd->pool, arg);
+	return NULL;
+}
+
+#ifdef STANDARD20_MODULE_STUFF
+static int
+init_ldap_userdir(apr_pool_t *pconf, apr_pool_t *plog,
+                  apr_pool_t *ptemp, server_rec *s)
+{
+	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.7");
+	return OK;
+}
+#else /* STANDARD20_MODULE_STUFF */
 static void
 init_ldap_userdir(server_rec *s, AP_POOL *p)
 {
-#ifdef STANDARD20_MODULE_STUFF
-	ap_add_version_component(p, "mod_ldap_userdir/1.1.6");
-#else
-	ap_add_version_component("mod_ldap_userdir/1.1.6");
-#endif
+	ap_add_version_component("mod_ldap_userdir/1.1.7");
 }
+#endif /* STANDARD20_MODULE_STUFF */
 
 static int
 connect_ldap_userdir(const ldap_userdir_config *s_cfg)
@@ -325,7 +334,12 @@ connect_ldap_userdir(const ldap_userdir_config *s_cfg)
 	return 1;
 }
 
-static void child_init_ldap_userdir(server_rec *s, AP_POOL *p)
+static void
+#ifdef STANDARD20_MODULE_STUFF
+child_init_ldap_userdir(apr_pool_t *p, server_rec *s)
+#else
+child_init_ldap_userdir(server_rec *s, AP_POOL *p)
+#endif
 {
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(s->module_config, &ldap_userdir_module);
 
@@ -334,22 +348,6 @@ static void child_init_ldap_userdir(server_rec *s, AP_POOL *p)
 	}
 
 	(void) connect_ldap_userdir(s_cfg);
-}
-
-static void child_exit_ldap_userdir(server_rec *s, AP_POOL *p)
-{
-	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(s->module_config, &ldap_userdir_module);
-
-	if (!s_cfg->ldap_enabled) {
-		return;
-	}
-
-	/* We're just trying to be Good Neighbors in doing this; we don't
-	   particularly care if it fails. Besides, it's not like there's
-	   a whole lot we're going to do about it. :-) */
-	if (ld != NULL) {
-		ldap_unbind(ld);
-	}
 }
 
 static char *
@@ -384,7 +382,7 @@ get_ldap_homedir(const ldap_userdir_config *s_cfg, request_rec *r,
                  const char *username)
 {
 	char *filter, **values, *homedir,
-		 *attrs[] = {LDAP_HOMEDIR_ATTR, NULL};
+		 *attrs[] = {s_cfg->ldap_homeattr, NULL};
 	int ret;
 	LDAPMessage *result, *e;
 
@@ -461,14 +459,14 @@ get_ldap_homedir(const ldap_userdir_config *s_cfg, request_rec *r,
 	}
 
 	if ((e = ldap_first_entry(ld, result)) != NULL) {
-		if ((values = ldap_get_values(ld, e, LDAP_HOMEDIR_ATTR)) == NULL) {
+		if ((values = ldap_get_values(ld, e, s_cfg->ldap_homeattr)) == NULL) {
 			/* We have to go through some theatrics here to get the
 			 * errno; is accessing ld->ld_errno portable?
 			 */
 #ifdef STANDARD20_MODULE_STUFF
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_get_values(\"" LDAP_HOMEDIR_ATTR"\") failed: %s", ldap_err2string(ldap_result2error(ld, result, 0)));
+			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", s_cfg->ldap_homeattr, ldap_err2string(ldap_result2error(ld, result, 0)));
 #else
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values(\"" LDAP_HOMEDIR_ATTR"\") failed: %s", ldap_err2string(ldap_result2error(ld, result, 0)));
+			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", s_cfg->ldap_homeattr, ldap_err2string(ldap_result2error(ld, result, 0)));
 #endif
 			ldap_msgfree(result);
 			return NULL;
@@ -633,12 +631,16 @@ register_hooks(AP_POOL *p)
 {
 	static const char *const aszPre[]  = {"mod_alias.c",       NULL};
 	static const char *const aszSucc[] = {"mod_vhost_alias.c", NULL};
-
 	ap_hook_translate_name(translate_ldap_userdir, aszPre, aszSucc, APR_HOOK_MIDDLE);
+
+	ap_hook_post_config(init_ldap_userdir, NULL, NULL, APR_HOOK_MIDDLE);
+	ap_hook_child_init(child_init_ldap_userdir, NULL, NULL, APR_HOOK_MIDDLE);
+
 #ifdef HAVE_UNIX_SUEXEC
 	ap_hook_get_suexec_identity(get_suexec_id_doer, NULL, NULL, APR_HOOK_FIRST);
 #endif
 }
+
 #endif /* STANDARD20_MODULE_STUFF */
 
 static const command_rec ldap_userdir_cmds[] = {
@@ -657,6 +659,8 @@ static const command_rec ldap_userdir_cmds[] = {
 	              "the LDAP search scope (\"onelevel\" or \"subtree\") that will be used when doing LDAP UserDir lookups"),
 	AP_INIT_FLAG("LDAPUserDirUseTLS", set_ldap_usetls, NULL, RSRC_CONF,
 	             "whether to use an encrypted connection to the LDAP server"),
+	AP_INIT_TAKE1("LDAPUserDirHomeAttribute", set_ldap_homeattr, NULL, RSRC_CONF,
+	              "the name of the LDAP attribute containing the user's home directory"),
 #else /* STANDARD20_MODULE_STUFF */
 	{"LDAPUserDir", set_ldap_user_dir, NULL, RSRC_CONF, RAW_ARGS,
 	 "the public subdirectory in users' home directories"},
@@ -672,6 +676,8 @@ static const command_rec ldap_userdir_cmds[] = {
 	 "the LDAP search scope (\"onelevel\" or \"subtree\") that will be used when doing LDAP UserDir lookups"},
 	{"LDAPUserDirUseTLS", set_ldap_usetls, NULL, RSRC_CONF, FLAG,
 	 "whether to use an encrypted connection to the LDAP server"},
+	{"LDAPUserDirHomeAttribute", set_ldap_homeattr, NULL, RSRC_CONF, TAKE1,
+	 "the name of the LDAP attribute containing the user's home directory"},
 #endif
 	{NULL}
 };
@@ -679,32 +685,32 @@ static const command_rec ldap_userdir_cmds[] = {
 #ifdef STANDARD20_MODULE_STUFF
 module AP_MODULE_DECLARE_DATA ldap_userdir_module = {
 	STANDARD20_MODULE_STUFF,
-	NULL,                         /* dir config creater */
-	NULL,                         /* dir merger --- default is to override */
-	create_ldap_userdir_config,   /* server config */
-	NULL,                         /* merge server config */
-	ldap_userdir_cmds,            /* command table */
-	register_hooks                /* register hooks */
+	NULL,                        /* dir config creater */
+	NULL,                        /* dir merger --- default is to override */
+	create_ldap_userdir_config,  /* server config */
+	NULL,                        /* merge server config */
+	ldap_userdir_cmds,           /* command table */
+	register_hooks               /* register hooks */
 #else
 module MODULE_VAR_EXPORT ldap_userdir_module = {
 	STANDARD_MODULE_STUFF,
-	init_ldap_userdir,			/* initializer */
-	NULL,						/* dir config creater */
-	NULL,						/* dir merger --- default is to override */
-	create_ldap_userdir_config, /* server config */
-	NULL,						/* merge server config */
-	ldap_userdir_cmds,			/* command table */
-	NULL,						/* handlers */
-	translate_ldap_userdir,		/* filename translation */
-	NULL,						/* check_user_id */
-	NULL,						/* check auth */
-	NULL,						/* check access */
-	NULL,						/* type_checker */
-	NULL,						/* fixups */
-	NULL,						/* logger */
-	NULL,						/* header parser */
-	child_init_ldap_userdir,	/* child_init */
-	child_exit_ldap_userdir,	/* child_exit */
-	NULL						/* post read-request */
+	init_ldap_userdir,           /* initializer */
+	NULL,                        /* dir config creater */
+	NULL,                        /* dir merger --- default is to override */
+	create_ldap_userdir_config,  /* server config */
+	NULL,                        /* merge server config */
+	ldap_userdir_cmds,           /* command table */
+	NULL,                        /* handlers */
+	translate_ldap_userdir,      /* filename translation */
+	NULL,                        /* check_user_id */
+	NULL,                        /* check auth */
+	NULL,                        /* check access */
+	NULL,                        /* type_checker */
+	NULL,                        /* fixups */
+	NULL,                        /* logger */
+	NULL,                        /* header parser */
+	child_init_ldap_userdir,     /* child_init */
+	NULL,                        /* child_exit */
+	NULL                         /* post read-request */
 #endif
 };
