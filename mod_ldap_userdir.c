@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.3
+ * mod_ldap_userdir v1.1.4
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -220,8 +220,10 @@ set_ldap_searchscope(cmd_parms *cmd, void *dummy, const char *arg)
 
 	if (strcasecmp(arg, "onelevel") == 0) {
 		s_cfg->ldap_searchscope = LDAP_SCOPE_ONELEVEL;
+		return NULL;
 	} else if (strcasecmp(arg, "subtree") == 0) {
 		s_cfg->ldap_searchscope = LDAP_SCOPE_SUBTREE;
+		return NULL;
 	}
 
 	return "LDAPUserDirSearchScope must be either \"onelevel\" or \"subtree\".";
@@ -243,9 +245,9 @@ static void
 init_ldap_userdir(server_rec *s, AP_POOL *p)
 {
 #ifdef STANDARD20_MODULE_STUFF
-	ap_add_version_component(p, "mod_ldap_userdir/1.1.3");
+	ap_add_version_component(p, "mod_ldap_userdir/1.1.4");
 #else
-	ap_add_version_component("mod_ldap_userdir/1.1.3");
+	ap_add_version_component("mod_ldap_userdir/1.1.4");
 #endif
 }
 
