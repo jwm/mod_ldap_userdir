@@ -1,4 +1,4 @@
-mod_ldap_userdir v1.1.9
+mod_ldap_userdir v1.1.10
 =======================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
@@ -39,8 +39,8 @@ the source distribution.
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.9.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1.9
+* gzip -dc mod_ldap_userdir-1.1.10.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.10
 * ./configure --with-activate
 * make
 * make install
@@ -77,6 +77,17 @@ the source distribution.
 ==========
 4. Changes
 ==========
+
+v1.1.10:
+* Apache 2.2 support. Thanks to Hiroto Kagotani <hiroto.kagotani@gmail.com>
+  and Takeshi Inagaki <ts-inagaki@kmn.co.jp> for reporting this.
+* Refined LDAP over TLS support. Thanks to Hiroto Kagotani
+  <hiroto.kagotani@gmail.com> and Takeshi Inagaki <ts-inagaki@kmn.co.jp>
+  for reporting problems when building in non-TLS mode.
+* Sun/Solaris LDAP SDK support. Thanks to Takeshi Inagaki
+  <ts-inagaki@kmn.co.jp> for reporting this.
+* Better sanity checking of the timeout value. Thanks to Italo Foppiano
+  Reyes <ifoppian@udec.cl> for reporting a problem with this.
 
 v1.1.9:
 * Add LDAPUserDirServerURL directive, which takes a single LDAP URL

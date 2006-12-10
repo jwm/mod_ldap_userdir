@@ -1,6 +1,6 @@
 /*
  * mod_ldap_userdir - LDAP UserDir module for the Apache web server
- * Copyright 1999, 2000-5, John Morrissey <jwm@horde.net>
+ * Copyright 1999, 2000-6, John Morrissey <jwm@horde.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.9
+ * mod_ldap_userdir v1.1.10
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -51,6 +51,8 @@
  * LDAPUserDir public_html /usr/web http://www.xyz.com/users
  */
 
+
+#include "config.h"
 
 #include "httpd.h"
 #include "http_config.h"
@@ -140,7 +142,9 @@ create_ldap_userdir_config(AP_POOL *p, server_rec *s)
 	newcfg->port = -1;
 	newcfg->search_scope = -1;
 	newcfg->cache_timeout = -1;
+#ifdef TLS
 	newcfg->use_tls = -1;
+#endif /* TLS */
 
 	newcfg->got_url = 0;
 
@@ -191,9 +195,11 @@ merge_ldap_userdir_config(AP_POOL *p, void *server1_conf, void *server2_conf)
 	if (merged_cfg->cache_timeout == -1) {
 		merged_cfg->cache_timeout = s_cfg1->cache_timeout;
 	}
+#ifdef TLS
 	if (merged_cfg->use_tls == -1) {
 		merged_cfg->use_tls = s_cfg1->use_tls;
 	}
+#endif /* TLS */
 
     return (void *) merged_cfg;
 }
@@ -217,24 +223,43 @@ set_url(cmd_parms *cmd, void *dummy, const char *arg)
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 	LDAPURLDesc *url;
 
-	if (s_cfg->server || s_cfg->use_tls != -1 || s_cfg->basedn ||
-	    s_cfg->filter_template || s_cfg->search_scope != -1)
+	if (s_cfg->server || s_cfg->basedn || s_cfg->filter_template ||
+	    s_cfg->search_scope != -1)
 	{
-		return "LDAPUserDirServerURL can't be combined with LDAPUserDirServer, LDAPUserDirUseTLS, LDAPUserDirBaseDN, LDAPUserDirFilter, or LDAPUserDirSearchScope.";
+		return "LDAPUserDirServerURL can't be combined with LDAPUserDirServer, LDAPUserDirBaseDN, LDAPUserDirFilter, or LDAPUserDirSearchScope.";
 	}
+#ifdef TLS
+	if (s_cfg->use_tls != -1) {
+		return "LDAPUserDirServerURL can't be combined with LDAPUserDirUseTLS.";
+	}
+#endif /* TLS */
 	s_cfg->got_url = 1;
 
 	if (ldap_url_parse(arg, &url) != LDAP_SUCCESS) {
 		return "LDAPUserDirServerURL must be supplied with a valid LDAP URL.";
 	}
 
-	if (strcasecmp(url->lud_scheme, "ldap") == 0) {
+#ifdef HAVE_LDAPURLDESC_LUD_SCHEME
+# define SCHEME_IS(scheme) \
+	((strlen(url->lud_scheme) == strlen(scheme) - 1) && \
+	 (strncasecmp(url->lud_scheme, scheme, strlen(scheme) - 1) == 0))
+#else /* HAVE_LDAPURLDESC_LUD_SCHEME */
+# define SCHEME_IS(scheme) (strncasecmp(arg, scheme, strlen(scheme)) == 0)
+#endif /* HAVE_LDAPURLDESC_LUD_SCHEME */
+
+#ifdef TLS
+	if (SCHEME_IS("ldap:")) {
 		s_cfg->use_tls = 0;
-	} else if (strcasecmp(url->lud_scheme, "ldaps") == 0) {
+	} else if (SCHEME_IS("ldaps:")) {
 		s_cfg->use_tls = 1;
 	} else {
 		return "Invalid scheme specified by LDAPUserDirServerURL. Valid schemes are 'ldap' or 'ldaps'.";
 	}
+#else /* TLS */
+	if (!SCHEME_IS("ldap:")) {
+		return "Invalid scheme specified by LDAPUserDirServerURL. Valid schemes are 'ldap'.";
+	}
+#endif /* TLS */
 
 	if (url->lud_host != NULL) {
 		s_cfg->server = AP_PSTRDUP(cmd->pool, url->lud_host);
@@ -387,10 +412,32 @@ set_cache_timeout(cmd_parms *cmd, void *dummy, const char *arg)
 	char *invalid_char = NULL;
 
 	s_cfg->cache_timeout = strtol(arg, &invalid_char, 10);
-	if (invalid_char != NULL) {
+	if (arg[0] == '\0' || *invalid_char != '\0') {
 		return "LDAPUserDirCacheTimeout must be supplied with a numeric cache timeout.";
 	}
 	return NULL;
+}
+
+static void
+apply_config_defaults(ldap_userdir_config *cfg)
+{
+	if (!cfg->home_attr) {
+		cfg->home_attr = "homeDirectory";
+	}
+	if (cfg->port == -1) {
+		cfg->port = LDAP_PORT;
+	}
+	if (cfg->search_scope == -1) {
+		cfg->search_scope = LDAP_SCOPE_SUBTREE;
+	}
+	if (cfg->cache_timeout == -1) {
+		cfg->cache_timeout = 300;
+	}
+#ifdef TLS
+	if (cfg->use_tls == -1) {
+		cfg->use_tls = 0;
+	}
+#endif /* TLS */
 }
 
 #ifdef STANDARD20_MODULE_STUFF
@@ -401,32 +448,23 @@ init_ldap_userdir(AP_POOL *pconf, AP_POOL *plog,
 	for (; s; s = s->next) {
 		ldap_userdir_config *s_cfg =
 			(ldap_userdir_config *) ap_get_module_config(s->module_config, &ldap_userdir_module);
-
-		if (!s_cfg->home_attr) {
-			s_cfg->home_attr = "homeDirectory";
-		}
-		if (s_cfg->port == -1) {
-			s_cfg->port = LDAP_PORT;
-		}
-		if (s_cfg->search_scope == -1) {
-			s_cfg->search_scope = LDAP_SCOPE_SUBTREE;
-		}
-		if (s_cfg->cache_timeout == -1) {
-			s_cfg->cache_timeout = 300;
-		}
-		if (s_cfg->use_tls == -1) {
-			s_cfg->use_tls = 0;
-		}
+		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.9");
+	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.10");
 	return OK;
 }
 #else /* STANDARD20_MODULE_STUFF */
 static void
 init_ldap_userdir(server_rec *s, AP_POOL *p)
 {
-	ap_add_version_component("mod_ldap_userdir/1.1.9");
+	for (; s; s = s->next) {
+		ldap_userdir_config *s_cfg =
+ 			(ldap_userdir_config *) ap_get_module_config(s->module_config, &ldap_userdir_module);
+		apply_config_defaults(s_cfg);
+	}
+
+	ap_add_version_component("mod_ldap_userdir/1.1.10");
 }
 #endif /* STANDARD20_MODULE_STUFF */
 
@@ -823,7 +861,7 @@ static ap_unix_identity_t *get_suexec_id_doer(const request_rec *r)
 		return NULL;
 	}
 
-	if (apr_get_userid(&ugid->uid, &ugid->gid, username, r->pool) != APR_SUCCESS) {
+	if (apr_uid_get(&ugid->uid, &ugid->gid, username, r->pool) != APR_SUCCESS) {
 		return NULL;
 	}
 

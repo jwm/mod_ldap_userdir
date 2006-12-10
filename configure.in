@@ -63,6 +63,15 @@ AC_CHECK_HEADERS(ldap.h, ,
 	AC_MSG_ERROR(You must have ldap.h to build mod_ldap_userdir.),
 	[#include <lber.h>])
 
+dnl AC_CHECK_MEMBER(struct ldap_url_desc.lud_scheme,
+dnl 	[AC_DEFINE(HAVE_LDAPURLDESC_LUD_SCHEME, 1, [Define if your LDAPURLDesc has a lud_scheme member.])], ,
+dnl 	[#include <lber.h>
+dnl #include <ldap.h>])
+AC_CHECK_MEMBER(LDAPURLDesc.lud_scheme,
+	[AC_DEFINE(HAVE_LDAPURLDESC_LUD_SCHEME, 1, [Define if your LDAPURLDesc has a lud_scheme member.])], ,
+	[#include <lber.h>
+#include <ldap.h>])
+
 AC_ARG_WITH(tls,
             [AC_HELP_STRING(
               [--without-tls],
@@ -73,4 +82,6 @@ AC_ARG_WITH(tls,
 AC_SUBST(APXS)
 AC_SUBST(EXTRA_CPPFLAGS EXTRA_LDFLAGS LIBS)
 AC_SUBST(TLS ACTIVATE)
+
+AC_CONFIG_HEADER(config.h)
 AC_OUTPUT(Makefile)
