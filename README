@@ -1,4 +1,4 @@
-mod_ldap_userdir v1.1.8
+mod_ldap_userdir v1.1.9
 =======================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
@@ -39,8 +39,8 @@ the source distribution.
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.8.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1.8
+* gzip -dc mod_ldap_userdir-1.1.9.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.9
 * ./configure --with-activate
 * make
 * make install
@@ -59,9 +59,11 @@ the source distribution.
 * The 'user-ldif' file contains a sample user ldif. Modify it to your liking
   and say ldapadd -D your-root-dn -w your-root-dn-password < ldif
 * You are *strongly* encouraged to read up on the LDAP config-file
-  directives in the DIRECTIVES file, included with the distribution. At bare
-  minimum, you'll need to have LDAPUserDir, LDAPUserDirDNInfo, and
-  LDAPUserDirBaseDN configuration directives in your httpd.conf.
+  directives in the DIRECTIVES file, included with the distribution.
+
+  At bare minimum, you'll need LDAPUserDir and LDAPUserDirBaseDN directives. 
+  If you are not binding anonymously to your LDAP server, you must also
+  include LDAPUserDirDNInfo.
 
   A set of basic mod_ldap_userdir configuration directives would look like:
 
@@ -75,6 +77,22 @@ the source distribution.
 ==========
 4. Changes
 ==========
+
+v1.1.9:
+* Add LDAPUserDirServerURL directive, which takes a single LDAP URL
+  argument. Suggested by Fabien Picarougne
+  <fabien.picarougne@polytech.univ-nantes.fr>.
+* Register a configuration merge handler so directives from the main
+  server (outside a VirtualHost) are merged down and treated as overridable
+  defaults inside VirtualHosts. Errant behavior reported by Alexander Perlis
+  <alexanderperlis@yahoo.com>.
+* Fix building with Apache1.
+* Build system improvements:
+  * Build with LDAP TLS support automatically, if present.
+  * Use proper build path to mod_ldap_userdir.so with Apache2 builds.
+  * Improve autoconf usage.
+  * Drop autoconf support for Netscape LDAP SDK. autoconf support for it was
+    broken, and I can't find anyone still using it.
 
 v1.1.8:
 * Add caching support (with accompanying LDAPUserDirCacheTimeout directive),

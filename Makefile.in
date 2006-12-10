@@ -1,17 +1,36 @@
 APXS=@APXS@
-EXTRA_CFLAGS=@CFLAGS@ @TLS@
+EXTRA_CPPFLAGS=@EXTRA_CPPFLAGS@
+EXTRA_LDFLAGS=@EXTRA_LDFLAGS@
 LIBS=@LIBS@
-LDFLAGS=@LDFLAGS@
+TLS=@TLS@
 ACTIVATE=@ACTIVATE@
+ifeq ($(findstring apxs2, $(APXS)), apxs2)
+TARGET=.libs/mod_ldap_userdir.so
+else
+ifeq ($(findstring apache2, $(APXS)), apache2)
+TARGET=.libs/mod_ldap_userdir.so
+else
+TARGET=mod_ldap_userdir.so
+endif
+endif
 
-mod_ldap_userdir.so: mod_ldap_userdir.c
-	$(APXS) -c -o mod_ldap_userdir.so $(EXTRA_CFLAGS) $(LDFLAGS) $(LIBS) mod_ldap_userdir.c -shared
+$(TARGET): Makefile mod_ldap_userdir.c
+	$(APXS) -c $(EXTRA_CPPFLAGS) $(EXTRA_LDFLAGS) $(LIBS) $(TLS) mod_ldap_userdir.c
 
-install: mod_ldap_userdir.so
-	$(APXS) -i $(ACTIVATE) mod_ldap_userdir.so
+install: $(TARGET)
+	$(APXS) -in ldap_userdir $(ACTIVATE) $(TARGET)
 
 clean:
-	rm -rf *.lo *.slo *.so *.o .libs/ *~ core
+	rm -rf *.lo *.la *.slo *.so *.o .libs/ *~ core
 
 distclean: clean
-	rm -f Makefile config.status config.cache config.log
+	rm -rf Makefile config.status config.cache config.log autom4te.cache/
+
+configure: configure.in
+	autoconf
+
+config.status: configure
+	./config.status --recheck
+
+Makefile: Makefile.in config.status
+	./config.status

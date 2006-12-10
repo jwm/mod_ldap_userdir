@@ -4,26 +4,33 @@
   Example: LDAPUserDir public_html
 
 * LDAPUserDirServer
-  The LDAP directory server that will be used for UserDir queries.
+  The LDAP directory server to connect to.
 
   Example: LDAPUserDirServer server.example.com
 
+* LDAPUserDirServerURL
+  The LDAP URL to use. The attributes and extensions fields of the URL are
+  ignored.
+
+  Example: LDAPUserDirServerURL ldap://server.example.com/dc=example,dc=com??sub?(uid=%v)
+
 * LDAPUserDirDNInfo
-  The DN and password that will be used to bind to the LDAP server when
-  doing UserDir lookups.
+  The DN and password to use when binding to the LDAP server. If this
+  directive is omitted, anonymous binds are used.
 
   Example: LDAPUserDirDNInfo cn=root,dc=example,dc=com dnpass
 
 * LDAPUserDirBaseDN
-  The base DN that will be used when doing LDAP UserDir lookups.
+  The base DN to search on.
 
   Example: LDAPUserDirBaseDN dc=example,dc=com
 
 * LDAPUserDirFilter
-  A template that will be used for the LDAP filter when doing LDAP UserDir
-  lookups (%v is replaced with the username being resolved).
+  The LDAP filter template to use for searches. Both %u and %v are replaced
+  with the username being resolved, but %v is deprecated and may be removed
+  in a future release.
 
-  Example: LDAPUserDirFilter "(&(uid=%v)(objectClass=posixAccount))"
+  Example: LDAPUserDirFilter "(&(uid=%u)(objectClass=posixAccount))"
 
 * LDAPUserDirHomeAttribute
   The LDAP attribute containing the path to the user's home directory.
@@ -31,8 +38,7 @@
   Example: LDAPUserDirHomeAttribute homeDirectory
 
 * LDAPUserDirSearchScope
-  The LDAP search scope ("onelevel" or "subtree") that will be used when doing
-  LDAP UserDir lookups.
+  The LDAP search scope ("onelevel" or "subtree").
 
   Example: LDAPUserDirSearchScope subtree
 
