@@ -1,19 +1,14 @@
-mod_ldap_userdir v1.0
-=====================
+mod_ldap_userdir v1.0.1
+=======================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
-user home directories (for /~user URLs) from an LDAP database.
-
-**Please note:** Read the CHANGES section below for mod_ldap_userdir v1.0
-changes; some significant changes have been made since apache-userdirldap
-1.5. Do *NOT* upgrade to mod_ldap_userdir v1.0 before reading the CHANGES
-section.
+user home directories (for /~user URLs) from an LDAP directory.
 
 
 Sections:
 1. Author
 2. How do I install and set up mod_ldap_userdir?
-3. Changes in v1.0
+3. Changes
 4. To Do
 5. Thanks
 
@@ -32,8 +27,8 @@ improvements or ideas for development, please let me know!
 2. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.0.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.0
+* gzip -dc mod_ldap_userdir-1.0.1.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.0.1
 * ./configure --with-activate
 * make
 * make install
@@ -57,10 +52,15 @@ improvements or ideas for development, please let me know!
   Of course, you will need to update these configuration directives with
   the proper values for your environment.
 
-==================
-3. Changes in v1.0
-==================
+==========
+3. Changes
+==========
 
+v1.0.1:
+* Fixed a couple hard-coded references to the "homeDirectory" attr. (Thanks
+  to Christian Zoffoli [czoffoli at xmerlin dot org] for pointing this out.)
+
+v1.0:
 * Initial revision of standalone module. mod_ldap_userdir includes the same
   functionality as apache-userdirldap 1.5 and adds TLS/SSL support for
   connections to the LDAP server.

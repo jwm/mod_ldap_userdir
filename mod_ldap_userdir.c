@@ -1,6 +1,6 @@
 /*
  * mod_ldap_userdir - LDAP UserDir module for the Apache web server
- * Copyright 1999, 2000, 2001, John Morrissey <jwm@horde.net>
+ * Copyright 1999, 2000-2, John Morrissey <jwm@horde.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.0
+ * mod_ldap_userdir v1.0.1
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -316,10 +316,10 @@ get_ldap_homedir(const ldap_userdir_config *s_cfg, request_rec *r,
 	}
 
 	if ((e = ldap_first_entry(ld, result)) != NULL) {
-		if ((values = ldap_get_values(ld, e, "homeDirectory")) == NULL) {
+		if ((values = ldap_get_values(ld, e, LDAP_HOMEDIR_ATTR)) == NULL) {
 			/* We have to go through some theatrics here to get the
 			   errno; is accessing ld->ld_errno portable? */
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values(\"homeDirectory\") failed: %s", ldap_err2string(ldap_result2error(ld, result, 0)));
+			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values(\"" LDAP_HOMEDIR_ATTR"\") failed: %s", ldap_err2string(ldap_result2error(ld, result, 0)));
 			ldap_msgfree(result);
 			return NULL;
 		}
