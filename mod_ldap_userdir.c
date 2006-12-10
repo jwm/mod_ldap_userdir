@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.7
+ * mod_ldap_userdir v1.1.8
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -61,6 +61,8 @@
 # define APR_WANT_STRFUNC
 # include "apr_want.h"
 # include "apr_strings.h"
+# include "apr_hash.h"
+# include <time.h>
 # define AP_POOL apr_pool_t
 # define AP_PSTRDUP apr_pstrdup
 # define AP_PSTRCAT apr_pstrcat
@@ -107,14 +109,25 @@ module MODULE_VAR_EXPORT ldap_userdir_module;
 
 typedef struct ldap_userdir_config {
 	char *userdir;
-	int ldap_enabled;
+	int enabled;
 #ifdef TLS
-	int ldap_usetls;
+	int use_tls;
 #endif
-	char *ldap_server, *ldap_dn, *ldap_dnpass,
-	     *ldap_basedn, *ldap_filter_template, *ldap_homeattr;
-	int ldap_searchscope;
+	char *server, *ldap_dn, *dn_pass,
+	     *basedn, *filter_template, *home_attr;
+	int search_scope, cache_timeout;
+
+#ifdef STANDARD20_MODULE_STUFF
+	apr_hash_t *homedirHt;
+#endif /* STANDARD20_MODULE_STUFF */
 } ldap_userdir_config;
+
+#ifdef STANDARD20_MODULE_STUFF
+struct hash_entry {
+	time_t inserted_at;
+	char *homedir;
+};
+#endif /* STANDARD20_MODULE_STUFF */
 
 static LDAP *ld = NULL;
 
@@ -125,8 +138,14 @@ create_ldap_userdir_config(AP_POOL *p, server_rec *s)
 	ldap_userdir_config *newcfg = (ldap_userdir_config *) AP_PCALLOC(p, sizeof(ldap_userdir_config));
 
 	newcfg->userdir = "public_html";
-	newcfg->ldap_searchscope = LDAP_SCOPE_SUBTREE;
-	newcfg->ldap_homeattr = "homeDirectory";
+	newcfg->search_scope = LDAP_SCOPE_SUBTREE;
+	newcfg->home_attr = "homeDirectory";
+	newcfg->cache_timeout = 300;
+
+#ifdef STANDARD20_MODULE_STUFF
+	newcfg->homedirHt = apr_hash_make(p);
+#endif /* STANDARD20_MODULE_STUFF */
+
 	return (void *)newcfg;
 }
 
@@ -139,14 +158,14 @@ set_ldap_user_dir(cmd_parms *cmd, void *dummy, const char *arg)
 		return "LDAPUserDir must be supplied with the public subdirectory in users' home directories (e.g., 'public_html').";
 	}
 
-	s_cfg->ldap_enabled = 1;
+	s_cfg->enabled = 1;
 	s_cfg->userdir = AP_PSTRDUP(cmd->pool, arg);
 
 	return NULL;
 }
 
 static const char *
-set_ldap_server(cmd_parms *cmd, void *dummy, const char *arg)
+set_server(cmd_parms *cmd, void *dummy, const char *arg)
 {
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 
@@ -154,7 +173,7 @@ set_ldap_server(cmd_parms *cmd, void *dummy, const char *arg)
 		return "LDAPUserDirServer must be supplied with the name of an LDAP server.";
 	}
 
-	s_cfg->ldap_server = AP_PSTRDUP(cmd->pool, arg);
+	s_cfg->server = AP_PSTRDUP(cmd->pool, arg);
 	return NULL;
 }
 
@@ -172,13 +191,13 @@ set_ldap_dninfo(cmd_parms *cmd, void *dummy,
 	}
 
 	s_cfg->ldap_dn     = (char *)dn;
-	s_cfg->ldap_dnpass = (char *)pass;
+	s_cfg->dn_pass = (char *)pass;
 
 	return NULL;
 }
 
 static const char *
-set_ldap_basedn(cmd_parms *cmd, void *dummy, const char *arg)
+set_basedn(cmd_parms *cmd, void *dummy, const char *arg)
 {
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 
@@ -186,12 +205,12 @@ set_ldap_basedn(cmd_parms *cmd, void *dummy, const char *arg)
 		return "LDAPUserDirBaseDN must be supplied with the LDAP base DN to use for UserDir lookups.";
 	}
 
-	s_cfg->ldap_basedn = AP_PSTRDUP(cmd->pool, arg);
+	s_cfg->basedn = AP_PSTRDUP(cmd->pool, arg);
 	return NULL;
 }
 
 static const char *
-set_ldap_filter_template(cmd_parms *cmd, void *dummy, const char *arg)
+set_filter_template(cmd_parms *cmd, void *dummy, const char *arg)
 {
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 
@@ -199,12 +218,12 @@ set_ldap_filter_template(cmd_parms *cmd, void *dummy, const char *arg)
 		return "LDAPUserDirFilter must be supplied with a filter template to use for LDAP UserDir lookups.";
 	}
 
-	s_cfg->ldap_filter_template = AP_PSTRDUP(cmd->pool, arg);
+	s_cfg->filter_template = AP_PSTRDUP(cmd->pool, arg);
 	return NULL;
 }
 
 static const char *
-set_ldap_searchscope(cmd_parms *cmd, void *dummy, const char *arg)
+set_search_scope(cmd_parms *cmd, void *dummy, const char *arg)
 {
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 
@@ -213,10 +232,10 @@ set_ldap_searchscope(cmd_parms *cmd, void *dummy, const char *arg)
 	}
 
 	if (strcasecmp(arg, "onelevel") == 0) {
-		s_cfg->ldap_searchscope = LDAP_SCOPE_ONELEVEL;
+		s_cfg->search_scope = LDAP_SCOPE_ONELEVEL;
 		return NULL;
 	} else if (strcasecmp(arg, "subtree") == 0) {
-		s_cfg->ldap_searchscope = LDAP_SCOPE_SUBTREE;
+		s_cfg->search_scope = LDAP_SCOPE_SUBTREE;
 		return NULL;
 	}
 
@@ -224,11 +243,11 @@ set_ldap_searchscope(cmd_parms *cmd, void *dummy, const char *arg)
 }
 
 static const char *
-set_ldap_usetls(cmd_parms *cmd, void *dummy, int arg)
+set_use_tls(cmd_parms *cmd, void *dummy, int arg)
 {
 #ifdef TLS
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
-	s_cfg->ldap_usetls = arg;
+	s_cfg->use_tls = arg;
 	return NULL;
 #else
 	return "You must recompile mod_ldap_userdir to enable TLS/SSL support!";
@@ -236,7 +255,7 @@ set_ldap_usetls(cmd_parms *cmd, void *dummy, int arg)
 }
 
 static const char *
-set_ldap_homeattr(cmd_parms *cmd, void *dummy, const char *arg)
+set_home_attr(cmd_parms *cmd, void *dummy, const char *arg)
 {
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 
@@ -244,7 +263,20 @@ set_ldap_homeattr(cmd_parms *cmd, void *dummy, const char *arg)
 		return "LDAPUserDirHomeAttribute must be supplied with an attribute name, such as \"homeDirectory\"";
 	}
 
-	s_cfg->ldap_homeattr = AP_PSTRDUP(cmd->pool, arg);
+	s_cfg->home_attr = AP_PSTRDUP(cmd->pool, arg);
+	return NULL;
+}
+
+static const char *
+set_cache_timeout(cmd_parms *cmd, void *dummy, const char *arg)
+{
+	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
+	char *invalid_char = NULL;
+
+	s_cfg->cache_timeout = strtol(arg, &invalid_char, 10);
+	if (invalid_char != NULL) {
+		return "LDAPUserDirCacheTimeout must be supplied with a numeric cache timeout.";
+	}
 	return NULL;
 }
 
@@ -253,14 +285,14 @@ static int
 init_ldap_userdir(apr_pool_t *pconf, apr_pool_t *plog,
                   apr_pool_t *ptemp, server_rec *s)
 {
-	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.7");
+	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.8");
 	return OK;
 }
 #else /* STANDARD20_MODULE_STUFF */
 static void
 init_ldap_userdir(server_rec *s, AP_POOL *p)
 {
-	ap_add_version_component("mod_ldap_userdir/1.1.7");
+	ap_add_version_component("mod_ldap_userdir/1.1.8");
 }
 #endif /* STANDARD20_MODULE_STUFF */
 
@@ -269,17 +301,17 @@ connect_ldap_userdir(const ldap_userdir_config *s_cfg)
 {
 	int ret, sizelimit = 2;
 
-	if ((ld = ldap_init(s_cfg->ldap_server, LDAP_PORT)) == NULL) {
+	if ((ld = ldap_init(s_cfg->server, LDAP_PORT)) == NULL) {
 #ifdef STANDARD20_MODULE_STUFF
-		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: ldap_init() to %s failed: %s", s_cfg->ldap_server, strerror(errno));
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: ldap_init() to %s failed: %s", s_cfg->server, strerror(errno));
 #else
-		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: ldap_init() to %s failed: %s", s_cfg->ldap_server, strerror(errno));
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: ldap_init() to %s failed: %s", s_cfg->server, strerror(errno));
 #endif
 		return -1;
 	}
 
 #ifdef TLS
-	if (s_cfg->ldap_usetls) {
+	if (s_cfg->use_tls) {
 		int version = LDAP_VERSION3;
 
 		if ((ret = ldap_set_option(ld, LDAP_OPT_PROTOCOL_VERSION, &version)) != LDAP_OPT_SUCCESS) {
@@ -306,7 +338,7 @@ connect_ldap_userdir(const ldap_userdir_config *s_cfg)
 	}
 #endif /* TLS */
 
-	if ((ret = ldap_simple_bind_s(ld, s_cfg->ldap_dn, s_cfg->ldap_dnpass)) != LDAP_SUCCESS) {
+	if ((ret = ldap_simple_bind_s(ld, s_cfg->ldap_dn, s_cfg->dn_pass)) != LDAP_SUCCESS) {
 #ifdef STANDARD20_MODULE_STUFF
 		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: ldap_simple_bind() as %s failed: %s", s_cfg->ldap_dn, ldap_err2string(ret));
 #else
@@ -343,7 +375,7 @@ child_init_ldap_userdir(server_rec *s, AP_POOL *p)
 {
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(s->module_config, &ldap_userdir_module);
 
-	if (!s_cfg->ldap_enabled) {
+	if (!s_cfg->enabled) {
 		return;
 	}
 
@@ -377,14 +409,72 @@ generate_filter(AP_POOL *p, char *template, const char *entity)
 	return filter;
 }
 
+static char *
+cache_fetch(const ldap_userdir_config *s_cfg, const char *username)
+{
+	struct hash_entry *cached;
+
+	/* A cache timeout of 0 disables caching. */
+	if (s_cfg->cache_timeout == 0) {
+		return NULL;
+	}
+
+	cached = apr_hash_get(s_cfg->homedirHt, username, APR_HASH_KEY_STRING);
+	if (cached == NULL) {
+		return NULL;
+	}
+
+	/* If this entry is still valid, return it. Otherwise, expire the
+	 * stale entry.
+	 */
+	if (cached->inserted_at + s_cfg->cache_timeout > time(NULL)) {
+		return cached->homedir;
+	}
+
+	free(cached->homedir);
+	free(cached);
+	apr_hash_set(s_cfg->homedirHt, username, APR_HASH_KEY_STRING, NULL);
+	return NULL;
+}
+
+void
+cache_set(const ldap_userdir_config *s_cfg,
+          const char *username, const char *homedir)
+{
+	struct hash_entry *cached;
+
+	/* A cache timeout of 0 disables caching. */
+	if (s_cfg->cache_timeout == 0) {
+		return;
+	}
+
+	cached = (struct hash_entry *) malloc(sizeof(struct hash_entry));
+	if (cached == NULL) {
+		return;
+	}
+	cached->homedir = strdup(homedir);
+	if (cached->homedir == NULL) {
+		return;
+	}
+	cached->inserted_at = time(NULL);
+	apr_hash_set(s_cfg->homedirHt, username, APR_HASH_KEY_STRING, cached);
+}
+
 static const char *
 get_ldap_homedir(const ldap_userdir_config *s_cfg, request_rec *r,
                  const char *username)
 {
 	char *filter, **values, *homedir,
-		 *attrs[] = {s_cfg->ldap_homeattr, NULL};
+	     *attrs[] = {s_cfg->home_attr, NULL};
 	int ret;
 	LDAPMessage *result, *e;
+
+#ifdef STANDARD20_MODULE_STUFF
+	homedir = cache_fetch(s_cfg, username);
+	if (homedir != NULL) {
+		return homedir;
+	}
+#endif /* STANDARD20_MODULE_STUFF */
 
 	/* If we haven't even connected yet, try to connect. If we still can't
 	   connect, give up. */
@@ -394,21 +484,16 @@ get_ldap_homedir(const ldap_userdir_config *s_cfg, request_rec *r,
 		}
 	}
 
-	if (s_cfg->ldap_filter_template && *(s_cfg->ldap_filter_template)) {
-		filter = generate_filter(r->pool, s_cfg->ldap_filter_template, username);
+	if (s_cfg->filter_template && *(s_cfg->filter_template)) {
+		filter = generate_filter(r->pool, s_cfg->filter_template, username);
 	} else {
 		filter = generate_filter(r->pool, "(&(uid=%v)(objectClass=posixAccount))", username);
 	}
 
-	if ((ret = ldap_search_s(ld, s_cfg->ldap_basedn, s_cfg->ldap_searchscope, filter, attrs, 0, &result)) != LDAP_SUCCESS) {
+	if ((ret = ldap_search_s(ld, s_cfg->basedn, s_cfg->search_scope, filter, attrs, 0, &result)) != LDAP_SUCCESS) {
 		/* If the LDAP server went away, try to reconnect. If the reconnect
 		   fails, give up and log accordingly. */
 		if (ret == LDAP_SERVER_DOWN) {
-#ifdef STANDARD20_MODULE_STUFF
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: LDAP server has gone away, attempting to reconnect. (ldap_search_s() failed: %s)", ldap_err2string(ret));
-#else
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: LDAP server has gone away, attempting to reconnect. (ldap_search_s() failed: %s)", ldap_err2string(ret));
-#endif
 			ldap_unbind(ld);
 
 			if (connect_ldap_userdir(s_cfg) != 1) {
@@ -421,13 +506,7 @@ get_ldap_homedir(const ldap_userdir_config *s_cfg, request_rec *r,
 				return NULL;
 			}
 
-#ifdef STANDARD20_MODULE_STUFF
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: LDAP server went away, but a reconnect was successful. Resuming normal operations.");
-#else
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: LDAP server went away, but a reconnect was successful. Resuming normal operations.");
-#endif
-
-			if ((ret = ldap_search_s(ld, s_cfg->ldap_basedn, s_cfg->ldap_searchscope, filter, attrs, 0, &result)) != LDAP_SUCCESS) {
+			if ((ret = ldap_search_s(ld, s_cfg->basedn, s_cfg->search_scope, filter, attrs, 0, &result)) != LDAP_SUCCESS) {
 #ifdef STANDARD20_MODULE_STUFF
 				ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_search_s() failed: %s", ldap_err2string(ret));
 #else
@@ -458,20 +537,7 @@ get_ldap_homedir(const ldap_userdir_config *s_cfg, request_rec *r,
 		return NULL;
 	}
 
-	if ((e = ldap_first_entry(ld, result)) != NULL) {
-		if ((values = ldap_get_values(ld, e, s_cfg->ldap_homeattr)) == NULL) {
-			/* We have to go through some theatrics here to get the
-			 * errno; is accessing ld->ld_errno portable?
-			 */
-#ifdef STANDARD20_MODULE_STUFF
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", s_cfg->ldap_homeattr, ldap_err2string(ldap_result2error(ld, result, 0)));
-#else
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", s_cfg->ldap_homeattr, ldap_err2string(ldap_result2error(ld, result, 0)));
-#endif
-			ldap_msgfree(result);
-			return NULL;
-		}
-	} else {
+	if ((e = ldap_first_entry(ld, result)) == NULL) {
 #ifdef STANDARD20_MODULE_STUFF
 		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_first_entry() failed: %s", ldap_err2string(ldap_result2error(ld, result, 0)));
 #else
@@ -481,10 +547,24 @@ get_ldap_homedir(const ldap_userdir_config *s_cfg, request_rec *r,
 		return NULL;
 	}
 
+	if ((values = ldap_get_values(ld, e, s_cfg->home_attr)) == NULL) {
+#ifdef STANDARD20_MODULE_STUFF
+		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", s_cfg->home_attr, ldap_err2string(ldap_result2error(ld, result, 0)));
+#else
+		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", s_cfg->home_attr, ldap_err2string(ldap_result2error(ld, result, 0)));
+#endif
+		ldap_msgfree(result);
+		return NULL;
+	}
+
 	homedir = AP_PSTRDUP(r->pool, values[0]);
+#ifdef STANDARD20_MODULE_STUFF
+	cache_set(s_cfg, username, homedir);
+#endif /* STANDARD20_MODULE_STUFF */
+
 	ldap_msgfree(result);
 	ldap_value_free(values);
-	return(homedir);
+	return homedir;
 }
 
 static int
@@ -498,7 +578,7 @@ translate_ldap_userdir(request_rec *r)
 	 * If the URI doesn't match our basic pattern, we've nothing to do with
 	 * it.
 	 */
-	if ((! s_cfg->ldap_enabled) ||
+	if ((! s_cfg->enabled) ||
 	    (name[0] != '/') ||
 	    (name[1] != '~'))
 	{
@@ -647,37 +727,41 @@ static const command_rec ldap_userdir_cmds[] = {
 #ifdef STANDARD20_MODULE_STUFF
 	AP_INIT_RAW_ARGS("LDAPUserDir", set_ldap_user_dir, NULL, RSRC_CONF,
 	                 "the public subdirectory in users' home directories"),
-	AP_INIT_TAKE1("LDAPUserDirServer", set_ldap_server, NULL, RSRC_CONF,
+	AP_INIT_TAKE1("LDAPUserDirServer", set_server, NULL, RSRC_CONF,
 	              "the LDAP directory server that will be used for LDAP UserDir queries"),
 	AP_INIT_TAKE2("LDAPUserDirDNInfo", set_ldap_dninfo, NULL, RSRC_CONF,
 	              "the DN and password that will be used to bind to the LDAP server when doing LDAP UserDir lookups"),
-	AP_INIT_TAKE1("LDAPUserDirBaseDN", set_ldap_basedn, NULL, RSRC_CONF,
+	AP_INIT_TAKE1("LDAPUserDirBaseDN", set_basedn, NULL, RSRC_CONF,
 	              "the base DN that will be used when doing LDAP UserDir lookups"),
-	AP_INIT_TAKE1("LDAPUserDirFilter", set_ldap_filter_template, NULL, RSRC_CONF,
+	AP_INIT_TAKE1("LDAPUserDirFilter", set_filter_template, NULL, RSRC_CONF,
 	              "a template that will be used for the LDAP filter when doing LDAP UserDir lookups (%v is replaced with the username being resolved)"),
-	AP_INIT_TAKE1("LDAPUserDirSearchScope", set_ldap_searchscope, NULL, RSRC_CONF,
+	AP_INIT_TAKE1("LDAPUserDirSearchScope", set_search_scope, NULL, RSRC_CONF,
 	              "the LDAP search scope (\"onelevel\" or \"subtree\") that will be used when doing LDAP UserDir lookups"),
-	AP_INIT_FLAG("LDAPUserDirUseTLS", set_ldap_usetls, NULL, RSRC_CONF,
+	AP_INIT_FLAG("LDAPUserDirUseTLS", set_use_tls, NULL, RSRC_CONF,
 	             "whether to use an encrypted connection to the LDAP server"),
-	AP_INIT_TAKE1("LDAPUserDirHomeAttribute", set_ldap_homeattr, NULL, RSRC_CONF,
+	AP_INIT_TAKE1("LDAPUserDirHomeAttribute", set_home_attr, NULL, RSRC_CONF,
 	              "the name of the LDAP attribute containing the user's home directory"),
+	AP_INIT_TAKE1("LDAPUserDirCacheTimeout", set_cache_timeout, NULL, RSRC_CONF,
+	              "how long, in seconds, to store cached LDAP entries"),
 #else /* STANDARD20_MODULE_STUFF */
 	{"LDAPUserDir", set_ldap_user_dir, NULL, RSRC_CONF, RAW_ARGS,
 	 "the public subdirectory in users' home directories"},
-	{"LDAPUserDirServer", set_ldap_server, NULL, RSRC_CONF, TAKE1,
+	{"LDAPUserDirServer", set_server, NULL, RSRC_CONF, TAKE1,
 	 "the LDAP directory server that will be used for LDAP UserDir queries"},
 	{"LDAPUserDirDNInfo", set_ldap_dninfo, NULL, RSRC_CONF, TAKE2,
 	 "the DN and password that will be used to bind to the LDAP server when doing LDAP UserDir lookups"},
-	{"LDAPUserDirBaseDN", set_ldap_basedn, NULL, RSRC_CONF, TAKE1,
+	{"LDAPUserDirBaseDN", set_basedn, NULL, RSRC_CONF, TAKE1,
 	 "the base DN that will be used when doing LDAP UserDir lookups"},
-	{"LDAPUserDirFilter", set_ldap_filter_template, NULL, RSRC_CONF, TAKE1,
+	{"LDAPUserDirFilter", set_filter_template, NULL, RSRC_CONF, TAKE1,
 	 "a template that will be used for the LDAP filter when doing LDAP UserDir lookups (%v is replaced with the username being resolved)"},
-	{"LDAPUserDirSearchScope", set_ldap_searchscope, NULL, RSRC_CONF, TAKE1,
+	{"LDAPUserDirSearchScope", set_search_scope, NULL, RSRC_CONF, TAKE1,
 	 "the LDAP search scope (\"onelevel\" or \"subtree\") that will be used when doing LDAP UserDir lookups"},
-	{"LDAPUserDirUseTLS", set_ldap_usetls, NULL, RSRC_CONF, FLAG,
+	{"LDAPUserDirUseTLS", set_use_tls, NULL, RSRC_CONF, FLAG,
 	 "whether to use an encrypted connection to the LDAP server"},
-	{"LDAPUserDirHomeAttribute", set_ldap_homeattr, NULL, RSRC_CONF, TAKE1,
+	{"LDAPUserDirHomeAttribute", set_home_attr, NULL, RSRC_CONF, TAKE1,
 	 "the name of the LDAP attribute containing the user's home directory"},
+	{"LDAPUserDirCacheTimeout", set_cache_timeout, NULL, RSRC_CONF, TAKE1,
+	 "how long, in seconds, to store cached LDAP entries"},
 #endif
 	{NULL}
 };

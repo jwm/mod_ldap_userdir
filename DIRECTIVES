@@ -34,9 +34,14 @@
   The LDAP search scope ("onelevel" or "subtree") that will be used when doing
   LDAP UserDir lookups.
 
-  Example: LDAPUserDirSearchScope onelevel
+  Example: LDAPUserDirSearchScope subtree
 
 * LDAPUserDirUseTLS
   Whether to use an encrypted (TLS/SSL) connection to the LDAP server.
 
-  Example: LDAPUserDirUseTLS on
+  Example: LDAPUserDirUseTLS off
+
+* LDAPUserDirCacheTimeout
+  How long, in seconds, to store cached LDAP entries.
+
+  Example: LDAPUserDirCacheTimeout 300
