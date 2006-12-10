@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.2
+ * mod_ldap_userdir v1.1.3
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -72,11 +72,19 @@
 # define AP_PSTRDUP apr_pstrdup
 # define AP_PSTRCAT apr_pstrcat
 # define AP_PCALLOC apr_pcalloc
+# define AP_STRSTR ap_strstr
+# define AP_STRSTR_C ap_strstr_c
+# define AP_STRCHR_C ap_strchr_c
+# define AP_TABLE_SETN apr_table_setn
 #else /* STANDARD20_MODULE_STUFF */
 # define AP_POOL pool
 # define AP_PSTRDUP ap_pstrdup
 # define AP_PSTRCAT ap_pstrcat
 # define AP_PCALLOC ap_pcalloc
+# define AP_STRSTR strstr
+# define AP_STRSTR_C strstr
+# define AP_STRCHR_C strchr
+# define AP_TABLE_SETN ap_table_setn
 # if !defined(NETWARE)
 #  include <sys/types.h>
 # endif
@@ -235,9 +243,9 @@ static void
 init_ldap_userdir(server_rec *s, AP_POOL *p)
 {
 #ifdef STANDARD20_MODULE_STUFF
-	ap_add_version_component(p, "mod_ldap_userdir/1.1.2");
+	ap_add_version_component(p, "mod_ldap_userdir/1.1.3");
 #else
-	ap_add_version_component("mod_ldap_userdir/1.1.2");
+	ap_add_version_component("mod_ldap_userdir/1.1.3");
 #endif
 }
 
@@ -345,7 +353,7 @@ generate_filter(AP_POOL *p, char *template, const char *entity)
 	int num_escapes = 0, i = 0, j = 0;
 
 	pos = template;
-	while ((pos = strstr(pos + 2, "%v")) != NULL) {
+	while ((pos = AP_STRSTR(pos + 2, "%v")) != NULL) {
 		++num_escapes;
 	}
 
@@ -530,15 +538,15 @@ translate_ldap_userdir(request_rec *r)
 #endif
 		char *x = NULL, *redirect;
 
-		if (ap_strchr_c(userdir, '*')) {
+		if (AP_STRCHR_C(userdir, '*')) {
 			x = ap_getword(r->pool, &userdir, '*');
 		}
 
 		if (userdir[0] == '\0' || is_absolute) {
 			if (x) {
-				if (ap_strstr_c(x, "://") && !is_absolute)	{
+				if (AP_STRSTR_C(x, "://") && !is_absolute)	{
 					redirect = AP_PSTRCAT(r->pool, x, w, userdir, dname, NULL);
-					apr_table_setn(r->headers_out, "Location", redirect);
+					AP_TABLE_SETN(r->headers_out, "Location", redirect);
 					return HTTP_MOVED_TEMPORARILY;
 				} else {
 					filename = AP_PSTRCAT(r->pool, x, w, userdir, NULL);
@@ -546,9 +554,9 @@ translate_ldap_userdir(request_rec *r)
 			} else {
 				filename = AP_PSTRCAT(r->pool, userdir, "/", w, NULL);
 			}
-		} else if (x && ap_strstr_c(x, "://")) {
+		} else if (x && AP_STRSTR_C(x, "://")) {
 			redirect = AP_PSTRCAT(r->pool, x, w, userdir, dname, NULL);
-			apr_table_setn(r->headers_out, "Location", redirect);
+			AP_TABLE_SETN(r->headers_out, "Location", redirect);
 			return HTTP_MOVED_TEMPORARILY;
 		} else {
 			filename = AP_PSTRCAT(r->pool, homedir, "/", userdir, NULL);

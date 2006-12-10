@@ -1,4 +1,4 @@
-mod_ldap_userdir v1.1.2
+mod_ldap_userdir v1.1.3
 =======================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
@@ -39,15 +39,9 @@ the source distribution.
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.2.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1.2
-* If you are running Apache 2.x, run:
-
-  ./configure --with-apxs2=/path/to/apxs --with-activate
-
-  Otherwise, run:
-
-  ./configure --with-activate
+* gzip -dc mod_ldap_userdir-1.1.3.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.3
+* ./configure --with-activate
 * make
 * make install
 
@@ -81,6 +75,9 @@ the source distribution.
 ==========
 4. Changes
 ==========
+
+v1.1.3:
+* Fixed Apache2-isms that crept into 1.1.2.
 
 v1.1.2:
 * Update the mod_ldap_userdir version added by ap_add_version_component.
