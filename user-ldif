@@ -1,0 +1,8 @@
+dn: uid=jwm,dc=example,dc=com
+objectclass: posixAccount
+cn: John Morrissey
+uid: jwm
+uidNumber: 1000
+gidNumber: 100
+homeDirectory: /home/jwm
+userPassword: {crypt}*

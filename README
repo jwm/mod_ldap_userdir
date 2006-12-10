@@ -1,0 +1,79 @@
+mod_ldap_userdir v1.0
+=====================
+
+mod_ldap_userdir is a module that enables the Apache web server to look up
+user home directories (for /~user URLs) from an LDAP database.
+
+**Please note:** Read the CHANGES section below for mod_ldap_userdir v1.0
+changes; some significant changes have been made since apache-userdirldap
+1.5. Do *NOT* upgrade to mod_ldap_userdir v1.0 before reading the CHANGES
+section.
+
+
+Sections:
+1. Author
+2. How do I install and set up mod_ldap_userdir?
+3. Changes in v1.0
+4. To Do
+5. Thanks
+
+
+=========
+1. Author
+=========
+
+John Morrissey, <jwm@horde.net>,
+http://horde.net/~jwm/software/mod_ldap_userdir/. Feedback is much
+appreciated. If you're using mod_ldap_userdir successfully, are having
+problems getting mod_ldap up and running at your site, or have some code
+improvements or ideas for development, please let me know!
+
+================================================
+2. How do I install and set up mod_ldap_userdir?
+================================================
+
+* gzip -dc mod_ldap_userdir-1.0.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.0
+* ./configure --with-activate
+* make
+* make install
+* If your LDAP server runs OpenLDAP 1.x, you need to add the posixAccount
+  schema definition.  Add the contents of posixAccount-objectclass to your
+  slapd.oc.conf and restart your LDAP server. OpenLDAP 2.x (and most other
+  LDAP servers) ship with this schema predefined.
+* The 'user-ldif' file contains a sample user ldif. Modify it to your liking
+  and say ldapadd -D your-root-dn -w your-root-dn-password < ldif
+* You are *strongly* encouraged to read up on the LDAP config-file
+  directives in the DIRECTIVES file, included with the distribution. At bare
+  minimum, you'll need to have LDAPUserDir, LDAPUserDirDNInfo, and
+  LDAPUserDirBaseDN configuration directives in your httpd.conf.
+
+  A set of basic mod_ldap_userdir configuration directives would look like:
+
+    LDAPUserDir        public_html
+    LDAPUserDirDNInfo  cn=your-dn,dc=example,dc=com dnpass
+    LDAPUserDirBaseDN  ou=People,dc=example,dc=com
+
+  Of course, you will need to update these configuration directives with
+  the proper values for your environment.
+
+==================
+3. Changes in v1.0
+==================
+
+* Initial revision of standalone module. mod_ldap_userdir includes the same
+  functionality as apache-userdirldap 1.5 and adds TLS/SSL support for
+  connections to the LDAP server.
+
+========
+4. To Do
+========
+
+* Currently, nothing.
+
+=========
+5. Thanks
+=========
+
+* Everyone who's downloaded, used and/or offered feedback on
+  apache-userdirldap.

@@ -1,0 +1,95 @@
+AC_INIT(mod_ldap_userdir.c)
+
+AC_ARG_WITH(apxs, --with-apxs                         Path to Apache's apxs command,
+	test $withval = no || APXS=$withval)
+
+AC_ARG_WITH(activate, --with-activate                     Activate mod_ldap_userdir.so in httpd.conf, 
+	test $withval = yes && ACTIVATE=-a)
+
+AC_ARG_WITH(ldap-sdk, --with-ldap-sdk=netscape|openldap   Specify which LDAP SDK to use)
+
+AC_ARG_WITH(sdk-directory, --with-sdk-headers                  Specify the path to the LDAP SDK header files)
+
+AC_ARG_WITH(sdk-directory, --with-sdk-libs                     Specify the path to the LDAP SDK libraries)
+
+AC_ARG_WITH(tls, --with-tls                          Build with TLS (LDAP over SSL) support,
+	test $withval = no || TLS=-DWITH_TLS)
+
+if test -z "$APXS"; then
+	APXS=apxs
+fi
+test $APXS = yes && APXS=false
+
+case $target in
+	*aix*)
+		AIX_EXP=mod_ldap_userdir.exp
+		AIX_LDFLAGS_SHLIB=-bE:`echo $@|sed -e 's:\.so$$:.exp:'`
+		;;
+esac
+
+AC_CHECK_PROG(APXS, apxs, apxs, $with_apxs)
+
+AC_MSG_CHECKING(whether apxs works)
+test -z "$APXS" && AC_MSG_ERROR(Cannot build mod_ldap_userdir without a valid apxs program)
+
+$APXS -q CFLAGS >/dev/null
+if test $? = 0; then
+	AC_MSG_RESULT(yes)
+else
+	AC_MSG_RESULT(no)
+	AC_MSG_ERROR(Cannot build mod_ldap_userdir without a valid apxs program)
+fi
+
+if test -n "$with_sdk_headers"; then
+	CFLAGS="-I$with_sdk_headers $CFLAGS"
+fi
+if test -n "$with_sdk_libs"; then
+	LDFLAGS="-L$with_sdk_libs $LDFLAGS"
+fi
+
+check_netscape_lib()
+{
+	if test $found_netscape_libs = no; then
+		thelib=$1
+		extralibs=$2
+
+		unset ac_cv_lib_${thelib}_ldap_init
+		found_netscape_libs=yes
+		AC_CHECK_LIB($thelib, ldap_init, LIBS="-l$thelib $extralibs $LIBS", 
+		             found_netscape_libs=no, $extralibs)
+	fi
+}
+
+test -z "$with_ldap_sdk" && with_ldap_sdk=openldap
+case $with_ldap_sdk in
+	openldap)
+		AC_CHECK_LIB(lber, ber_init, , , -lnsl)
+		AC_CHECK_LIB(ldap, ldap_init)
+		;;
+
+	netscape)
+		found_netscape_libs=no
+
+		check_netscape_lib ldapssl41 '-lnspr3 -lplc3 -lplds3'	# Generic
+		check_netscape_lib ldapssl41 '-lnspr3 -lplc3 -lplds3 -lsocket -lnsl -lmt' # Solaris
+		check_netscape_lib ldapssl41 '-lnspr3 -lplc3 -lplds3 -lpthread' # Linux
+		check_netscape_lib ldapssl40
+		check_netscape_lib ldapssl40 -lpthread
+		check_netscape_lib ldapssl30
+		check_netscape_lib ldapssl30 -lpthread
+		check_netscape_lib ldapssl20
+		check_netscape_lib ldapssl20 -lpthread
+
+		test $found_netscape_libs = no && AC_MSG_ERROR(could not find Netscape LDAP libraries)
+		;;
+esac
+
+dnl Checks for library functions.
+AC_CHECK_FUNCS(strerror)
+
+AC_SUBST(TLS)
+AC_SUBST(ACTIVATE)
+AC_SUBST(AIX_EXP)
+AC_SUBST(AIX_LDFLAGS_SHLIB)
+
+AC_OUTPUT(Makefile)
