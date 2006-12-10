@@ -1,4 +1,4 @@
-mod_ldap_userdir v1.1.10
+mod_ldap_userdir v1.1.11
 =======================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
@@ -39,8 +39,8 @@ the source distribution.
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.10.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1.10
+* gzip -dc mod_ldap_userdir-1.1.11.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.11
 * ./configure --with-activate
 * make
 * make install
@@ -77,6 +77,30 @@ the source distribution.
 ==========
 4. Changes
 ==========
+
+v1.1.11:
+* Add LDAPProtocolVersion directive to specify the LDAP protocol version
+  to use. The LDAP protocol version now defaults to LDAPv3 instead of
+  LDAPv2. Thanks to Aaron Brace <abrace@metrocastcablevision.com> for
+  the patch.
+* Fetch the user's canonical username (as returned by the LDAP directory)
+  to pass to suEXEC instead of passing the username as received in the URL.
+  Thanks to Aaron Brace <abrace@metrocastcablevision.com> for the patch.
+* The previous change also removes the LDAPUserDirHomeAttribute directive
+  in favor of the new LDAPAttribute directive. To migrate your previous
+  configuration, change:
+
+    LDAPUserDirHomeAttribute username
+
+  to:
+
+    LDAPAttribute uid username
+
+  More information on LDAPAttribute is in DIRECTIVES.
+* Fix libldap/liblber autodetection when using --with-sdk-headers and/or
+  --with-sdk-libdir configure options. Thanks to Daniel Lark
+  <dlark@viaccess.net> for the bug report.
+* No longer require GNU make.
 
 v1.1.10:
 * Apache 2.2 support. Thanks to Hiroto Kagotani <hiroto.kagotani@gmail.com>

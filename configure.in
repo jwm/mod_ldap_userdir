@@ -17,13 +17,13 @@ AC_ARG_WITH(sdk-headers,
               [--with-sdk-headers],
               [Specify the path to the LDAP SDK header files])
             ],
-            [EXTRA_CPPFLAGS="-I$withval"])
+            [CPPFLAGS="-I$withval"])
 AC_ARG_WITH(sdk-libdir,
             [AC_HELP_STRING(
               [--with-sdk-libdir],
               [Specify the path to the LDAP SDK libraries])
             ],
-            [EXTRA_LDFLAGS="-L$withval"])
+            [LDFLAGS="-L$withval"])
 
 AC_PROG_CC
 dnl We need to reset CFLAGS after AC_PROG_CC sets it. apxs will provide
@@ -53,6 +53,15 @@ else
 	AC_MSG_ERROR(Cannot build mod_ldap_userdir without a valid apxs program)
 fi
 
+# There must be a better way, but I've yet to find it.
+if echo $APXS | grep apxs2 >/dev/null; then
+	TARGET=.libs/mod_ldap_userdir.so
+elif echo $APXS | grep apache2 >/dev/null; then
+	TARGET=.libs/mod_ldap_userdir.so
+else
+	TARGET=mod_ldap_userdir.so
+fi
+
 AC_CHECK_LIB(lber, ber_init)
 AC_CHECK_LIB(ldap, ldap_init, found_openldap_libs=yes; LIBS="-lldap $LIBS",
 	AC_MSG_ERROR(You must have libldap to build mod_ldap_userdir.))
@@ -79,8 +88,8 @@ AC_ARG_WITH(tls,
             ], ,
             [AC_CHECK_FUNC(ldap_start_tls_s, TLS=-DTLS)])
 
-AC_SUBST(APXS)
-AC_SUBST(EXTRA_CPPFLAGS EXTRA_LDFLAGS LIBS)
+AC_SUBST(APXS TARGET)
+AC_SUBST(CPPFLAGS LDFLAGS LIBS)
 AC_SUBST(TLS ACTIVATE)
 
 AC_CONFIG_HEADER(config.h)

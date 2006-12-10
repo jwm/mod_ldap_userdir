@@ -309,7 +309,7 @@ ac_includes_default="\
 # include <unistd.h>
 #endif"
 
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT CPP EGREP APXS EXTRA_CPPFLAGS EXTRA_LDFLAGS LIBS TLS ACTIVATE LIBOBJS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT CPP EGREP APXS TARGET CPPFLAGS LDFLAGS LIBS TLS ACTIVATE LIBOBJS LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -1316,13 +1316,13 @@ fi;
 # Check whether --with-sdk-headers or --without-sdk-headers was given.
 if test "${with_sdk_headers+set}" = set; then
   withval="$with_sdk_headers"
-  EXTRA_CPPFLAGS="-I$withval"
+  CPPFLAGS="-I$withval"
 fi;
 
 # Check whether --with-sdk-libdir or --without-sdk-libdir was given.
 if test "${with_sdk_libdir+set}" = set; then
   withval="$with_sdk_libdir"
-  EXTRA_LDFLAGS="-L$withval"
+  LDFLAGS="-L$withval"
 fi;
 
 ac_ext=c
@@ -2283,6 +2283,15 @@ echo "${ECHO_T}no" >&6
 	{ { echo "$as_me:$LINENO: error: Cannot build mod_ldap_userdir without a valid apxs program" >&5
 echo "$as_me: error: Cannot build mod_ldap_userdir without a valid apxs program" >&2;}
    { (exit 1); exit 1; }; }
+fi
+
+# There must be a better way, but I've yet to find it.
+if echo $APXS | grep apxs2 >/dev/null; then
+	TARGET=.libs/mod_ldap_userdir.so
+elif echo $APXS | grep apache2 >/dev/null; then
+	TARGET=.libs/mod_ldap_userdir.so
+else
+	TARGET=mod_ldap_userdir.so
 fi
 
 
@@ -3984,8 +3993,9 @@ s,@OBJEXT@,$OBJEXT,;t t
 s,@CPP@,$CPP,;t t
 s,@EGREP@,$EGREP,;t t
 s,@APXS@,$APXS,;t t
-s,@EXTRA_CPPFLAGS@,$EXTRA_CPPFLAGS,;t t
-s,@EXTRA_LDFLAGS@,$EXTRA_LDFLAGS,;t t
+s,@TARGET@,$TARGET,;t t
+s,@CPPFLAGS@,$CPPFLAGS,;t t
+s,@LDFLAGS@,$LDFLAGS,;t t
 s,@LIBS@,$LIBS,;t t
 s,@TLS@,$TLS,;t t
 s,@ACTIVATE@,$ACTIVATE,;t t

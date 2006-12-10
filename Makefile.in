@@ -1,21 +1,13 @@
 APXS=@APXS@
-EXTRA_CPPFLAGS=@EXTRA_CPPFLAGS@
-EXTRA_LDFLAGS=@EXTRA_LDFLAGS@
+CPPFLAGS=@CPPFLAGS@
+LDFLAGS=@LDFLAGS@
 LIBS=@LIBS@
 TLS=@TLS@
 ACTIVATE=@ACTIVATE@
-ifeq ($(findstring apxs2, $(APXS)), apxs2)
-TARGET=.libs/mod_ldap_userdir.so
-else
-ifeq ($(findstring apache2, $(APXS)), apache2)
-TARGET=.libs/mod_ldap_userdir.so
-else
-TARGET=mod_ldap_userdir.so
-endif
-endif
+TARGET=@TARGET@
 
 $(TARGET): Makefile mod_ldap_userdir.c
-	$(APXS) -c $(EXTRA_CPPFLAGS) $(EXTRA_LDFLAGS) $(LIBS) $(TLS) mod_ldap_userdir.c
+	$(APXS) -c $(CPPFLAGS) $(LDFLAGS) $(LIBS) $(TLS) mod_ldap_userdir.c
 
 install: $(TARGET)
 	$(APXS) -in ldap_userdir $(ACTIVATE) $(TARGET)

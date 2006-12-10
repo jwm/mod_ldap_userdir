@@ -8,6 +8,11 @@
 
   Example: LDAPUserDirServer server.example.com
 
+  For failover, multiple servers can be specified, separated by spaces.
+  All server names must be enclosed in the same set of quotes.
+
+  Example: LDAPUserDirServer "server1.example.com server2.example.com"
+
 * LDAPUserDirServerURL
   The LDAP URL to use. The attributes and extensions fields of the URL are
   ignored.
@@ -32,15 +37,29 @@
 
   Example: LDAPUserDirFilter "(&(uid=%u)(objectClass=posixAccount))"
 
-* LDAPUserDirHomeAttribute
-  The LDAP attribute containing the path to the user's home directory.
+* LDAPAttributeName
+  Change the LDAP attribute names used in order to reflect your local schema.
+  Currently, only the "uid" and "homeDirectory" attributes are used.
 
-  Example: LDAPUserDirHomeAttribute homeDirectory
+  For example, if your LDAP schema uses the "homeLocation" attribute instead
+  of "homeDirectory":
+
+  Example: LDAPAttributeName homeDirectory homeLocation
+
+  Or if it uses "ispUsername" to store the account's username instead of
+  "uid":
+
+  Example: LDAPAttributeName uid ispUsername
 
 * LDAPUserDirSearchScope
   The LDAP search scope ("onelevel" or "subtree").
 
   Example: LDAPUserDirSearchScope subtree
+
+* LDAPProtocolVersion
+  The LDAP protocol version to use (2 or 3).
+
+  Example: LDAPProtocolVersion 3
 
 * LDAPUserDirUseTLS
   Whether to use an encrypted (TLS/SSL) connection to the LDAP server.
