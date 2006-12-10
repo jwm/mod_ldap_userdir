@@ -46,6 +46,7 @@ else
 fi
 
 if test -n "$with_sdk_headers"; then
+	CPPFLAGS="-I$with_sdk_headers $CPPFLAGS"
 	CFLAGS="-I$with_sdk_headers $CFLAGS"
 fi
 if test -n "$with_sdk_libs"; then

@@ -1,6 +1,6 @@
 /*
  * mod_ldap_userdir - LDAP UserDir module for the Apache web server
- * Copyright 1999, 2000-2, John Morrissey <jwm@horde.net>
+ * Copyright 1999, 2000-3, John Morrissey <jwm@horde.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,30 +20,10 @@
  * Furthermore, John Morrissey gives permission to link this program with
  * OpenSSL, and distribute the resulting executable, without including the
  * source code for OpenSSL in the source distribution.
- *
- *
- * As of mod_ldap_userdir 1.1, you MUST send a postcard to the following
- * address if you use mod_ldap_userdir. If you do not send a postcard, you
- * are in violation of mod_ldap_userdir's licensing.
- *
- * I hope I don't come across as being needlessly uptight about this; I just
- * want to know that people are using mod_ldap_userdir and that they
- * appreciate the effort I put into working on it and providing support. I
- * also enjoy hearing about where people are from, especially considering
- * I'm a USAnian who's never been across the Pond. :-)
- *
- * If you don't have(?) or don't want to send a postcard, e-mail me a
- * photograph of your local area, something geographically close to you, or
- * something you find interesting. Thanks!
- *
- * John Morrissey
- * P.O. Box 209
- * Henrietta, NY 14534-2638
- * USA
  */
 
 /*
- * mod_ldap_userdir v1.1
+ * mod_ldap_userdir v1.1.1
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -56,7 +36,6 @@
  * directories (a la DirectoryIndex). For example:
  *
  * LDAPUserDir public_html public_www
- *
  */
 
 #ifndef LDAP_HOMEDIR_ATTR
@@ -139,7 +118,7 @@ set_ldap_user_dir(cmd_parms *cmd, void *dummy, const char *arg)
 	if (strlen(arg) == 0)
 		return "LDAPUserDir must be supplied with the public subdirectory in users' home directories (e.g., 'public_html').";
 
-	s_cfg->ldap_enabled = TRUE;
+	s_cfg->ldap_enabled = 1;
 	s_cfg->userdir = AP_PSTRDUP(cmd->pool, arg);
 
 	return NULL;

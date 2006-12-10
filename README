@@ -1,5 +1,5 @@
-mod_ldap_userdir v1.1
-=====================
+mod_ldap_userdir v1.1.1
+=======================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
 user home directories (for /~user URLs) from an LDAP directory.
@@ -28,37 +28,19 @@ code improvements or ideas for development, please let me know!
 2. Licensing
 ============
 
-mod_ldap_userdir is licensed under the GPL, with two exceptions:
+mod_ldap_userdir is licensed under the GPL, with an exception to allow for
+linking against OpenSSL:
 
-1. The linking of mod_ldap_userdir with OpenSSL is allowed. You may
-   distribute the resulting executable without including the source
-   code for OpenSSL in the source distribution.
-
-2. As of mod_ldap_userdir 1.1, you MUST send a postcard to the following
-   address if you use mod_ldap_userdir. If you do not send a postcard, you
-   are in violation of mod_ldap_userdir's licensing.
-
-   I hope I don't come across as being needlessly uptight about this; I just
-   want to know that people are using mod_ldap_userdir and that they
-   appreciate the effort I put into working on it and providing support. I
-   also enjoy hearing about where people are from, especially considering
-   I'm a USAnian who's never been across the Pond. :-)
-
-   If you don't have(?) or don't want to send a postcard, e-mail me a
-   photograph of your local area, something geographically close to you, or
-   something you find interesting. Thanks!
-
-   John Morrissey
-   P.O. Box 209
-   Henrietta, NY 14534-2638
-   USA
+The linking of mod_ldap_userdir with OpenSSL is allowed. You may distribute
+the resulting executable without including the source code for OpenSSL in
+the source distribution.
 
 ================================================
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1
+* gzip -dc mod_ldap_userdir-1.1.1.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.1
 * If you are running Apache 2.x, run:
 
   ./configure --with-apxs2=/path/to/apxs --with-activate
@@ -91,6 +73,9 @@ mod_ldap_userdir is licensed under the GPL, with two exceptions:
 ==========
 4. Changes
 ==========
+
+v1.1.1:
+* Compilation fix for platforms that don't define TRUE in their headers.
 
 v1.1:
 * Apache 2.x support. Thanks to Shane Boulter (sboulter at ariasolutions dot
