@@ -1,4 +1,4 @@
-mod_ldap_userdir v1.1.1
+mod_ldap_userdir v1.1.2
 =======================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
@@ -39,8 +39,8 @@ the source distribution.
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.1.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1.1
+* gzip -dc mod_ldap_userdir-1.1.2.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.2
 * If you are running Apache 2.x, run:
 
   ./configure --with-apxs2=/path/to/apxs --with-activate
@@ -50,6 +50,14 @@ the source distribution.
   ./configure --with-activate
 * make
 * make install
+
+  If the installation fails and you manually copy mod_userdir_ldap.so into
+  place, you will need to add something like:
+
+  LoadModule ldap_userdir_module modules/mod_ldap_userdir.so
+
+  to your httpd.conf.
+
 * If your LDAP server runs OpenLDAP 1.x, you need to add the posixAccount
   schema definition.  Add the contents of posixAccount-objectclass to your
   slapd.oc.conf and restart your LDAP server. OpenLDAP 2.x (and most other
@@ -73,6 +81,12 @@ the source distribution.
 ==========
 4. Changes
 ==========
+
+v1.1.2:
+* Update the mod_ldap_userdir version added by ap_add_version_component.
+* Build fixes for Netware and Win32 by Guenter Knauf <gk@gknw.de>.
+* Support for wildcards and redirection by Shyokou Ouyou
+  <shyokou@scientist.com>.
 
 v1.1.1:
 * Compilation fix for platforms that don't define TRUE in their headers.

@@ -1,10 +1,7 @@
 AC_INIT(mod_ldap_userdir.c)
 
 AC_ARG_WITH(apxs,
-            [AC_HELP_STRING([--with-apxs], [Path to Apache's apxs command])],
-            test $withval = no || APXS=$withval)
-AC_ARG_WITH(apxs2,
-            [AC_HELP_STRING([--with-apxs2], [Path to Apache 2's apxs command])],
+            [AC_HELP_STRING([--with-apxs], [Path to Apache's apxs command (version 1.3.x or 2.0.x)])],
             test $withval = no || APXS=$withval)
 AC_ARG_WITH(activate,
             [AC_HELP_STRING([--with-activate], [Activate mod_ldap_userdir.so in httpd.conf])],
@@ -19,16 +16,11 @@ dnl We need to reset CFLAGS after AC_PROG_CC sets it. apxs will provide
 dnl its own CFLAGS and gets confused when we try to feed ours to it.
 CFLAGS=''
 
-if test "$with_apxs2" != ''; then
-	APACHE2=-DAPACHE2=1
-fi
-
 if test -z "$APXS"  -o  "$APXS" = 'yes'; then
 	if test -f /usr/local/apache/bin/apxs; then
 		APXS=/usr/local/apache/bin/apxs
 	elif test -f /usr/local/apache2/bin/apxs; then
 		APXS=/usr/local/apache2/bin/apxs
-		APACHE2=-DAPACHE2=1
 	else
 		APXS=apxs
 	fi
@@ -91,5 +83,5 @@ AC_CHECK_HEADERS(lber.h, , AC_MSG_ERROR(You must have lber.h in order to build m
 AC_CHECK_HEADERS(ldap.h, , AC_MSG_ERROR(You must have ldap.h in order to build mod_ldap_userdir.), [#include <lber.h>])
 
 AC_SUBST(LIBS LDFLAGS)
-AC_SUBST(APACHE2 TLS ACTIVATE)
+AC_SUBST(TLS ACTIVATE)
 AC_OUTPUT(Makefile)
