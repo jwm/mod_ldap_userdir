@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.5
+ * mod_ldap_userdir v1.1.6
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -249,9 +249,9 @@ static void
 init_ldap_userdir(server_rec *s, AP_POOL *p)
 {
 #ifdef STANDARD20_MODULE_STUFF
-	ap_add_version_component(p, "mod_ldap_userdir/1.1.5");
+	ap_add_version_component(p, "mod_ldap_userdir/1.1.6");
 #else
-	ap_add_version_component("mod_ldap_userdir/1.1.5");
+	ap_add_version_component("mod_ldap_userdir/1.1.6");
 #endif
 }
 
@@ -592,7 +592,7 @@ translate_ldap_userdir(request_rec *r)
 			}
 
 			/* For use in the get_suexec_identity phase. */
-			apr_table_setn(r->notes, "mod_ldap_userdir_user", w);
+			AP_TABLE_SETN(r->notes, "mod_ldap_userdir_user", w);
 
 			return OK;
 		}
