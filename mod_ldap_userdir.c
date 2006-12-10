@@ -1,6 +1,6 @@
 /*
  * mod_ldap_userdir - LDAP UserDir module for the Apache web server
- * Copyright 1999, 2000-3, John Morrissey <jwm@horde.net>
+ * Copyright 1999, 2000-5, John Morrissey <jwm@horde.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.4
+ * mod_ldap_userdir v1.1.5
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -76,6 +76,10 @@
 # define AP_STRSTR_C ap_strstr_c
 # define AP_STRCHR_C ap_strchr_c
 # define AP_TABLE_SETN apr_table_setn
+# if !defined(WIN32) && !defined(OS2) && !defined(BEOS) && !defined(NETWARE)
+#  define HAVE_UNIX_SUEXEC
+#  include "unixd.h"  /* Contains the suexec_identity hook used on Unix */
+# endif
 #else /* STANDARD20_MODULE_STUFF */
 # define AP_POOL pool
 # define AP_PSTRDUP ap_pstrdup
@@ -245,9 +249,9 @@ static void
 init_ldap_userdir(server_rec *s, AP_POOL *p)
 {
 #ifdef STANDARD20_MODULE_STUFF
-	ap_add_version_component(p, "mod_ldap_userdir/1.1.4");
+	ap_add_version_component(p, "mod_ldap_userdir/1.1.5");
 #else
-	ap_add_version_component("mod_ldap_userdir/1.1.4");
+	ap_add_version_component("mod_ldap_userdir/1.1.5");
 #endif
 }
 
@@ -586,6 +590,10 @@ translate_ldap_userdir(request_rec *r)
 			if (*userdirs && dname[0] == 0) {
 				r->finfo = statbuf;
 			}
+
+			/* For use in the get_suexec_identity phase. */
+			apr_table_setn(r->notes, "mod_ldap_userdir_user", w);
+
 			return OK;
 		}
 	}
@@ -594,6 +602,32 @@ translate_ldap_userdir(request_rec *r)
 }
 
 #ifdef STANDARD20_MODULE_STUFF
+
+#ifdef HAVE_UNIX_SUEXEC
+static ap_unix_identity_t *get_suexec_id_doer(const request_rec *r)
+{
+	ap_unix_identity_t *ugid = NULL;
+#if APR_HAS_USER
+	const char *username = apr_table_get(r->notes, "mod_ldap_userdir_user");
+
+	if (username == NULL) {
+		return NULL;
+	}
+
+	if ((ugid = apr_palloc(r->pool, sizeof(ap_unix_identity_t *))) == NULL) {
+		return NULL;
+	}
+
+	if (apr_get_userid(&ugid->uid, &ugid->gid, username, r->pool) != APR_SUCCESS) {
+		return NULL;
+	}
+
+	ugid->userdir = 1;
+#endif 
+	return ugid;
+}
+#endif /* HAVE_UNIX_SUEXEC */
+
 static void
 register_hooks(AP_POOL *p)
 {
@@ -601,6 +635,9 @@ register_hooks(AP_POOL *p)
 	static const char *const aszSucc[] = {"mod_vhost_alias.c", NULL};
 
 	ap_hook_translate_name(translate_ldap_userdir, aszPre, aszSucc, APR_HOOK_MIDDLE);
+#ifdef HAVE_UNIX_SUEXEC
+	ap_hook_get_suexec_identity(get_suexec_id_doer, NULL, NULL, APR_HOOK_FIRST);
+#endif
 }
 #endif /* STANDARD20_MODULE_STUFF */
 

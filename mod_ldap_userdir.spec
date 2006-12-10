@@ -1,12 +1,12 @@
 #	conditional build:	
 #		'_with_tls'	if	'--with tls'
 #	e.g.,
-#		'rpmbuild --with tls -bt mod_ldap_userdir-1.1.4.tar.bz2'
+#		'rpmbuild --with tls -bt mod_ldap_userdir-1.1.5.tar.bz2'
 
 %define		__module_name	ldap_userdir
 
 Name:		mod_%{__module_name}
-Version:	1.1.4
+Version:	1.1.5
 Release:	1
 URL:		http://horde.net/~jwm/software/mod_ldap_userdir/
 Source:		%{name}-%{version}.tar.bz2
