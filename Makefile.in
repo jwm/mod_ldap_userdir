@@ -1,37 +1,17 @@
-LIBS=@LIBS@
-TLS=@TLS@
 APXS=@APXS@
+EXTRA_CFLAGS=@CFLAGS@ @TLS@ @APACHE2@
+LIBS=@LIBS@
+LDFLAGS=@LDFLAGS@
 ACTIVATE=@ACTIVATE@
-EXTRA_CFLAGS=@CFLAGS@
-EXTRA_LDFLAGS=@LDFLAGS@
-AIX_EXP=@AIX_EXP@
-AIX_LDFLAGS_SHLIB=@AIX_LDFLAGS_SHLIB@
 
-OBJS=mod_ldap_userdir.o
-
-CC=`$(APXS) -q CC`
-CFLAGS=$(EXTRA_CFLAGS) `$(APXS) -q CFLAGS` $(TLS) $(OPENLDAP)
-CFLAGS_SHLIB=`$(APXS) -q CFLAGS_SHLIB`
-INCLUDEDIR=`$(APXS) -q INCLUDEDIR`
-LD_SHLIB=`$(APXS) -q LD_SHLIB`
-LDFLAGS_SHLIB=$(EXTRA_LDFLAGS) `$(APXS) -q LDFLAGS_SHLIB` $(AIX_LDFLAGS_SHLIB)
-
-$(AIX_EXP):
-	@echo auth_ldap_module > $@
-
-mod_ldap_userdir.so: $(OBJS) $(AIX_EXP)
-	@echo $(LD_SHLIB) $(LDFLAGS_SHLIB) -o $@ $(OBJS) $(LIBS)
-	@$(LD_SHLIB) $(LDFLAGS_SHLIB) -o $@ $(OBJS) $(LIBS)
-
-%.o: %.c
-	@echo $(CC) -c -o $@ $(CFLAGS) $(CFLAGS_SHLIB) -I$(INCLUDEDIR) $(CPPFLAGS) $<
-	@$(CC) -c -o $@ $(CFLAGS) $(CFLAGS_SHLIB) -I$(INCLUDEDIR) $(CPPFLAGS) $<
+mod_ldap_userdir.so: mod_ldap_userdir.c
+	$(APXS) -c -o mod_ldap_userdir.so $(EXTRA_CFLAGS) $(LDFLAGS) $(LIBS) mod_ldap_userdir.c -shared
 
 install: mod_ldap_userdir.so
 	$(APXS) -i $(ACTIVATE) mod_ldap_userdir.so
 
 clean:
-	rm -f *.so *.o *~ core $(AIX_EXP)
+	rm -rf *.lo *.slo *.so *.o .libs/ *~ core
 
 distclean: clean
 	rm -f Makefile config.status config.cache config.log

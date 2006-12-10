@@ -1,5 +1,5 @@
-mod_ldap_userdir v1.0.1
-=======================
+mod_ldap_userdir v1.1
+=====================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
 user home directories (for /~user URLs) from an LDAP directory.
@@ -7,10 +7,11 @@ user home directories (for /~user URLs) from an LDAP directory.
 
 Sections:
 1. Author
-2. How do I install and set up mod_ldap_userdir?
-3. Changes
-4. To Do
-5. Thanks
+2. Licensing
+3. How do I install and set up mod_ldap_userdir?
+4. Changes
+5. To Do
+6. Thanks
 
 
 =========
@@ -20,16 +21,51 @@ Sections:
 John Morrissey, <jwm@horde.net>,
 http://horde.net/~jwm/software/mod_ldap_userdir/. Feedback is much
 appreciated. If you're using mod_ldap_userdir successfully, are having
-problems getting mod_ldap up and running at your site, or have some code
-improvements or ideas for development, please let me know!
+problems getting mod_ldap_userdir up and running at your site, or have some
+code improvements or ideas for development, please let me know!
+
+============
+2. Licensing
+============
+
+mod_ldap_userdir is licensed under the GPL, with two exceptions:
+
+1. The linking of mod_ldap_userdir with OpenSSL is allowed. You may
+   distribute the resulting executable without including the source
+   code for OpenSSL in the source distribution.
+
+2. As of mod_ldap_userdir 1.1, you MUST send a postcard to the following
+   address if you use mod_ldap_userdir. If you do not send a postcard, you
+   are in violation of mod_ldap_userdir's licensing.
+
+   I hope I don't come across as being needlessly uptight about this; I just
+   want to know that people are using mod_ldap_userdir and that they
+   appreciate the effort I put into working on it and providing support. I
+   also enjoy hearing about where people are from, especially considering
+   I'm a USAnian who's never been across the Pond. :-)
+
+   If you don't have(?) or don't want to send a postcard, e-mail me a
+   photograph of your local area, something geographically close to you, or
+   something you find interesting. Thanks!
+
+   John Morrissey
+   P.O. Box 209
+   Henrietta, NY 14534-2638
+   USA
 
 ================================================
-2. How do I install and set up mod_ldap_userdir?
+3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.0.1.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.0.1
-* ./configure --with-activate
+* gzip -dc mod_ldap_userdir-1.1.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1
+* If you are running Apache 2.x, run:
+
+  ./configure --with-apxs2=/path/to/apxs --with-activate
+
+  Otherwise, run:
+
+  ./configure --with-activate
 * make
 * make install
 * If your LDAP server runs OpenLDAP 1.x, you need to add the posixAccount
@@ -53,8 +89,17 @@ improvements or ideas for development, please let me know!
   the proper values for your environment.
 
 ==========
-3. Changes
+4. Changes
 ==========
+
+v1.1:
+* Apache 2.x support. Thanks to Shane Boulter (sboulter at ariasolutions dot
+  com) for providing an account with which I could implement Apache 2.x
+  support.
+* Improved build system.
+* Got rid of dependency on ldap_build_filter(), which will fix builds against
+  OpenLDAP 2.1.x, Novell eDirectory and a couple others.
+* Postcard-ware licensing addition.
 
 v1.0.1:
 * Fixed a couple hard-coded references to the "homeDirectory" attr. (Thanks
@@ -66,14 +111,13 @@ v1.0:
   connections to the LDAP server.
 
 ========
-4. To Do
+5. To Do
 ========
 
 * Currently, nothing.
 
 =========
-5. Thanks
+6. Thanks
 =========
 
-* Everyone who's downloaded, used and/or offered feedback on
-  apache-userdirldap.
+* Everyone who's downloaded, used and/or offered feedback.
