@@ -1,0 +1,8 @@
+.libs
+Makefile
+config.h
+config.log
+config.status
+mod_ldap_userdir.la
+mod_ldap_userdir.lo
+mod_ldap_userdir.slo
