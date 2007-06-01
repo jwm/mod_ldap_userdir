@@ -90,6 +90,8 @@ v1.1.12:
   remove the LDAPUserDirCacheTimeout directive from your configuration.
 * Fix handling of the cache timeout, so setting it to 0 seconds (to disable
   caching) now works.
+* Use non-deprecated LDAP API functions if the LDAP SDK is new enough to
+  comply with draft-ietf-ldapext-ldap-c-api-04.
 
 v1.1.11:
 * Add LDAPProtocolVersion directive to specify the LDAP protocol version

@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.12-20070525
+ * mod_ldap_userdir v1.1.12-20070601
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -101,6 +101,16 @@
 
 #include <lber.h>
 #include <ldap.h>
+
+#if LDAP_API_VERSION >= 2000
+# define LDAP_VALUE(values, i) (values[i]->bv_val)
+# define LDAP_VALUE_FREE(values) (ldap_value_free_len(values))
+# define LDAP_UNBIND(ld) (ldap_unbind_ext_s(ld, NULL, NULL))
+#else
+# define LDAP_VALUE(values, i) (values[i])
+# define LDAP_VALUE_FREE(values) (ldap_value_free(values))
+# define LDAP_UNBIND(ld) (ldap_unbind_s(ld, NULL, NULL))
+#endif
 
 /* Thanks, Sun. */
 #ifndef LDAP_OPT_SUCCESS
@@ -527,7 +537,7 @@ init_ldap_userdir(AP_POOL *pconf, AP_POOL *plog,
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.12-20070525");
+	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.12-20070601");
 	return OK;
 }
 #else /* STANDARD20_MODULE_STUFF */
@@ -540,14 +550,38 @@ init_ldap_userdir(server_rec *s, AP_POOL *p)
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component("mod_ldap_userdir/1.1.12-20070525");
+	ap_add_version_component("mod_ldap_userdir/1.1.12-20070601");
 }
 #endif /* STANDARD20_MODULE_STUFF */
+
+static char *
+result2errmsg(const request_rec *r, LDAP *ld, LDAPMessage *result)
+{
+	int ret;
+	char *result_errmsg, *errmsg;
+#if LDAP_API_VERSION >= 2000
+	ret = ldap_parse_result(ld, result, NULL, NULL, &result_errmsg,
+		NULL, NULL, 0);
+	if (ret == LDAP_SUCCESS) {
+		errmsg = AP_PSTRDUP(r->pool, result_errmsg);
+		ldap_memfree(result_errmsg);
+	} else {
+		errmsg = "Unknown";
+	}
+#else
+	errmsg = ldap_err2string(ldap_result2error(ld, result, 0));
+#endif
+
+	return errmsg;
+}
 
 static int
 connect_ldap_userdir(ldap_userdir_config *s_cfg)
 {
 	int ret, sizelimit = 2, version;
+#if LDAP_API_VERSION >= 2000
+	struct berval bindcred;
+#endif
 
 	if ((s_cfg->ld = (LDAP *) ldap_init(s_cfg->server, s_cfg->port)) == NULL) {
 #ifdef STANDARD20_MODULE_STUFF
@@ -574,7 +608,7 @@ connect_ldap_userdir(ldap_userdir_config *s_cfg)
 #else
 			ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: Setting LDAP version option failed: %s", ldap_err2string(ret));
 #endif
-			ldap_unbind(s_cfg->ld);
+			LDAP_UNBIND(s_cfg->ld);
 			s_cfg->ld = NULL;
 			return -1;
 		}
@@ -587,19 +621,25 @@ connect_ldap_userdir(ldap_userdir_config *s_cfg)
 #else
 			ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: Starting TLS failed: %s", ldap_err2string(ret));
 #endif
-			ldap_unbind(s_cfg->ld);
+			LDAP_UNBIND(s_cfg->ld);
 			s_cfg->ld = NULL;
 			return -1;
 		}
 	}
 #endif /* TLS */
 
+#if LDAP_API_VERSION >= 2000
+	bindcred.bv_val = s_cfg->dn_pass;
+	bindcred.bv_len = strlen(s_cfg->dn_pass);
+	ret = ldap_sasl_bind_s(s_cfg->ld, s_cfg->ldap_dn, NULL, &bindcred, NULL, NULL, NULL);
+#else /* LDAP_API_VERSION >= 2000 */
+	ret = ldap_simple_bind_s(s_cfg->ld, s_cfg->ldap_dn, s_cfg->dn_pass);
 #endif /* LDAP_API_VERSION >= 2000 */
-	if ((ret = ldap_simple_bind_s(s_cfg->ld, s_cfg->ldap_dn, s_cfg->dn_pass)) != LDAP_SUCCESS) {
+	if (ret != LDAP_SUCCESS) {
 #ifdef STANDARD20_MODULE_STUFF
-		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: ldap_simple_bind() as %s failed: %s", s_cfg->ldap_dn, ldap_err2string(ret));
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: bind as %s failed: %s", s_cfg->ldap_dn, ldap_err2string(ret));
 #else
-		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: ldap_simple_bind() as %s failed: %s", s_cfg->ldap_dn, ldap_err2string(ret));
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: bind as %s failed: %s", s_cfg->ldap_dn, ldap_err2string(ret));
 #endif
 		return -1;
 	}
@@ -715,10 +755,16 @@ static struct hash_entry *
 get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
                  const char *username)
 {
-	char *filter, **values,
+	char *filter,
 	     *attrs[] = {s_cfg->home_attr, s_cfg->username_attr,
 	                 s_cfg->uidNumber_attr, s_cfg->gidNumber_attr, NULL};
 	int i = 0, ret;
+#if LDAP_API_VERSION >= 2000
+	struct timeval timeout;
+	struct berval **values;
+#else
+	char **values;
+#endif
 	LDAPMessage *result, *e;
 	struct hash_entry *entry;
 
@@ -743,13 +789,21 @@ get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
 		filter = generate_filter(r->pool, "(&(uid=%u)(objectClass=posixAccount))", username);
 	}
 
-	ret = ldap_search_ext_s(s_cfg->ld, s_cfg->basedn, s_cfg->search_scope, filter, attrs, 0, NULL, NULL, &timeout, 2, &result);
+#if LDAP_API_VERSION >= 2000
+	timeout.tv_sec = 2;
+	timeout.tv_usec = 0;
+	ret = ldap_search_ext_s(s_cfg->ld, s_cfg->basedn, s_cfg->search_scope,
+		filter, attrs, 0, NULL, NULL, &timeout, 2, &result);
+#else /* LDAP_API_VERSION >= 2000 */
+	ret = ldap_search_s(s_cfg->ld, s_cfg->basedn, s_cfg->search_scope,
+		filter, attrs, 0, &result);
+#endif /* LDAP_API_VERSION >= 2000 */
 	if (ret != LDAP_SUCCESS) {
 		/* If the LDAP server went away, try to reconnect. If the reconnect
 		 * fails, give up and log accordingly.
 		 */
 		if (ret == LDAP_SERVER_DOWN) {
-			ldap_unbind(s_cfg->ld);
+			LDAP_UNBIND(s_cfg->ld);
 
 			if (connect_ldap_userdir(s_cfg) != 1) {
 #ifdef STANDARD20_MODULE_STUFF
@@ -761,19 +815,26 @@ get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
 				return NULL;
 			}
 
-			if ((ret = ldap_search_s(s_cfg->ld, s_cfg->basedn, s_cfg->search_scope, filter, attrs, 0, &result)) != LDAP_SUCCESS) {
+#if LDAP_API_VERSION >= 2000
+			ret = ldap_search_ext_s(s_cfg->ld, s_cfg->basedn, s_cfg->search_scope,
+				filter, attrs, 0, NULL, NULL, &timeout, 2, &result);
+#else /* LDAP_API_VERSION >= 2000 */
+			ret = ldap_search_s(s_cfg->ld, s_cfg->basedn, s_cfg->search_scope,
+				filter, attrs, 0, &result);
+#endif /* LDAP_API_VERSION >= 2000 */
+			if (ret != LDAP_SUCCESS) {
 #ifdef STANDARD20_MODULE_STUFF
-				ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_search_s() failed: %s", ldap_err2string(ret));
+				ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: LDAP search failed: %s", ldap_err2string(ret));
 #else
-				ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_search_s() failed: %s", ldap_err2string(ret));
+				ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: LDAP search failed: %s", ldap_err2string(ret));
 #endif
 				return NULL;
 			}
 		} else {
 #ifdef STANDARD20_MODULE_STUFF
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_search_s() failed: %s", ldap_err2string(ret));
+			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: LDAP search failed: %s", ldap_err2string(ret));
 #else
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_search_s() failed: %s", ldap_err2string(ret));
+			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: LDAP search failed: %s", ldap_err2string(ret));
 #endif
 			return NULL;
 		}
@@ -794,9 +855,9 @@ get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
 
 	if ((e = ldap_first_entry(s_cfg->ld, result)) == NULL) {
 #ifdef STANDARD20_MODULE_STUFF
-		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_first_entry() failed: %s", ldap_err2string(ldap_result2error(s_cfg->ld, result, 0)));
+		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_first_entry() failed: %s", result2errmsg(r, s_cfg->ld, result));
 #else
-		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_first_entry() failed: %s", ldap_err2string(ldap_result2error(s_cfg->ld, result, 0)));
+		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_first_entry() failed: %s", result2errmsg(r, s_cfg->ld, result));
 #endif
 		ldap_msgfree(result);
 		return NULL;
@@ -809,12 +870,16 @@ get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
 	}
 
 	while (attrs[i] != NULL) {
+#if LDAP_API_VERSION >= 2000
+		values = ldap_get_values_len(s_cfg->ld, e, attrs[i]);
+#else
 		values = ldap_get_values(s_cfg->ld, e, attrs[i]);
+#endif
 		if (!values) {
 #ifdef STANDARD20_MODULE_STUFF
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", attrs[i], ldap_err2string(ldap_result2error(s_cfg->ld, result, 0)));
+			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: couldn't fetch values for attr %s: %s", attrs[i], result2errmsg(r, s_cfg->ld, result));
 #else
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", attrs[i], ldap_err2string(ldap_result2error(s_cfg->ld, result, 0)));
+			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: couldn't fetch values for attr %s: %s", attrs[i], result2errmsg(r, s_cfg->ld, result));
 #endif
 			if (strcmp(attrs[i], s_cfg->username_attr) == 0 ||
 			    strcmp(attrs[i], s_cfg->home_attr) == 0)
@@ -832,32 +897,32 @@ get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
 		 * don't leak if anything fails.
 		 */
 		if (strcmp(attrs[i], s_cfg->home_attr) == 0) {
-			entry->homedir = strdup(values[0]);
-			ldap_value_free(values);
+			entry->homedir = strdup(LDAP_VALUE(values, 0));
+			LDAP_VALUE_FREE(values);
 			if (entry->homedir == NULL) {
 				free_entry(&entry);
 				ldap_msgfree(result);
 				return NULL;
 			}
 		} else if (strcmp(attrs[i], s_cfg->username_attr) == 0) {
-			entry->posix_username = strdup(values[0]);
-			ldap_value_free(values);
+			entry->posix_username = strdup(LDAP_VALUE(values, 0));
+			LDAP_VALUE_FREE(values);
 			if (entry->posix_username == NULL) {
 				free_entry(&entry);
 				ldap_msgfree(result);
 				return NULL;
 			}
 		} else if (strcmp(attrs[i], s_cfg->uidNumber_attr) == 0) {
-			entry->uid = strdup(values[0]);
-			ldap_value_free(values);
+			entry->uid = strdup(LDAP_VALUE(values, 0));
+			LDAP_VALUE_FREE(values);
 			if (entry->uid == NULL) {
 				free_entry(&entry);
 				ldap_msgfree(result);
 				return NULL;
 			}
 		} else if (strcmp(attrs[i], s_cfg->gidNumber_attr) == 0) {
-			entry->gid = strdup(values[0]);
-			ldap_value_free(values);
+			entry->gid = strdup(LDAP_VALUE(values, 0));
+			LDAP_VALUE_FREE(values);
 			if (entry->gid == NULL) {
 				free_entry(&entry);
 				ldap_msgfree(result);
@@ -869,7 +934,7 @@ get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
 #else
 			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values() loop found unknown attr %s", attrs[i]);
 #endif
-			ldap_value_free(values);
+			LDAP_VALUE_FREE(values);
 		}
 
 		++i;
