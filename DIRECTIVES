@@ -39,7 +39,8 @@
 
 * LDAPAttributeName
   Change the LDAP attribute names used in order to reflect your local schema.
-  Currently, only the "uid" and "homeDirectory" attributes are used.
+  Currently, the "uid", "homeDirectory", "uidNumber", and "gidNumber"
+  attributes are used.
 
   For example, if your LDAP schema uses the "homeLocation" attribute instead
   of "homeDirectory":
@@ -67,6 +68,7 @@
   Example: LDAPUserDirUseTLS off
 
 * LDAPUserDirCacheTimeout
-  How long, in seconds, to store cached LDAP entries.
+  How long, in seconds, to store cached LDAP entries. Caching is only
+  supported with Apache 2.0 and later.
 
   Example: LDAPUserDirCacheTimeout 300

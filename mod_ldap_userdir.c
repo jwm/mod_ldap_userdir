@@ -1,6 +1,6 @@
 /*
  * mod_ldap_userdir - LDAP UserDir module for the Apache web server
- * Copyright 1999, 2000-6, John Morrissey <jwm@horde.net>
+ * Copyright 1999, 2000-7, John Morrissey <jwm@horde.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.11
+ * mod_ldap_userdir v1.1.12-20070525
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -59,6 +59,10 @@
 #include "http_log.h"
 #include "http_request.h"
 
+/* httpd.h, please don't complain about my strtoul() usage.
+ * sunos4 doesn't matter much to me.
+ */
+#undef strtoul
 #ifdef STANDARD20_MODULE_STUFF
 # define APR_WANT_STRFUNC
 # include "apr_want.h"
@@ -113,8 +117,11 @@ typedef struct ldap_userdir_config {
 	char *userdir;
 	char *server, *ldap_dn, *dn_pass,
 	     *basedn, *filter_template,
-	     *home_attr, *username_attr;
-	int port, search_scope, cache_timeout, protocol_version;
+	     *home_attr, *username_attr, *uidNumber_attr, *gidNumber_attr;
+	int port, search_scope, protocol_version;
+#ifdef STANDARD20_MODULE_STUFF
+	int cache_timeout;
+#endif
 #ifdef TLS
 	int use_tls;
 #endif
@@ -133,6 +140,8 @@ struct hash_entry {
 	time_t inserted_at;
 	char *homedir;
 	char *posix_username;
+	char *uid;
+	char *gid;
 };
 #endif /* STANDARD20_MODULE_STUFF */
 
@@ -143,8 +152,10 @@ create_ldap_userdir_config(AP_POOL *p, server_rec *s)
 
 	newcfg->port = -1;
 	newcfg->search_scope = -1;
-	newcfg->cache_timeout = -1;
 	newcfg->protocol_version = -1;
+#ifdef STANDARD20_MODULE_STUFF
+	newcfg->cache_timeout = -1;
+#endif
 #ifdef TLS
 	newcfg->use_tls = -1;
 #endif /* TLS */
@@ -163,8 +174,8 @@ merge_ldap_userdir_config(AP_POOL *p, void *server1_conf, void *server2_conf)
 	ldap_userdir_config *s_cfg1 = (ldap_userdir_config *) server1_conf,
 	                    *s_cfg2 = (ldap_userdir_config *) server2_conf;
 
-    ldap_userdir_config *merged_cfg =
-    	(ldap_userdir_config *) AP_PCALLOC(p, sizeof(ldap_userdir_config));
+	ldap_userdir_config *merged_cfg =
+		(ldap_userdir_config *) AP_PCALLOC(p, sizeof(ldap_userdir_config));
 	memcpy(merged_cfg, s_cfg2, sizeof(ldap_userdir_config));
 
 	if (!merged_cfg->userdir) {
@@ -191,25 +202,33 @@ merge_ldap_userdir_config(AP_POOL *p, void *server1_conf, void *server2_conf)
 	if (!merged_cfg->username_attr) {
 		merged_cfg->username_attr = AP_PSTRDUP(p, s_cfg1->username_attr);
 	}
+	if (!merged_cfg->uidNumber_attr) {
+		merged_cfg->uidNumber_attr = AP_PSTRDUP(p, s_cfg1->uidNumber_attr);
+	}
+	if (!merged_cfg->gidNumber_attr) {
+		merged_cfg->gidNumber_attr = AP_PSTRDUP(p, s_cfg1->gidNumber_attr);
+	}
 	if (merged_cfg->port == -1) {
 		merged_cfg->port = s_cfg1->port;
 	}
 	if (merged_cfg->search_scope == -1) {
 		merged_cfg->search_scope = s_cfg1->search_scope;
 	}
-	if (merged_cfg->cache_timeout == -1) {
-		merged_cfg->cache_timeout = s_cfg1->cache_timeout;
-	}
 	if (merged_cfg->protocol_version == -1) {
 		merged_cfg->protocol_version = s_cfg1->protocol_version;
 	}
+#ifdef STANDARD20_MODULE_STUFF
+	if (merged_cfg->cache_timeout == -1) {
+		merged_cfg->cache_timeout = s_cfg1->cache_timeout;
+	}
+#endif /* STANDARD20_MODULE_STUFF */
 #ifdef TLS
 	if (merged_cfg->use_tls == -1) {
 		merged_cfg->use_tls = s_cfg1->use_tls;
 	}
 #endif /* TLS */
 
-    return (void *) merged_cfg;
+	return (void *) merged_cfg;
 }
 
 static const char *
@@ -319,7 +338,7 @@ set_ldap_dninfo(cmd_parms *cmd, void *dummy,
 		return "LDAPUserDirDNInfo must be supplied with a password to bind with.";
 	}
 
-	s_cfg->ldap_dn     = (char *)dn;
+	s_cfg->ldap_dn = (char *)dn;
 	s_cfg->dn_pass = (char *)pass;
 
 	return NULL;
@@ -417,13 +436,18 @@ set_attr_name(cmd_parms *cmd, void *dummy,
 		s_cfg->home_attr = AP_PSTRDUP(cmd->pool, their_attr);
 	} else if (strcasecmp(our_attr, "uid") == 0) {
 		s_cfg->username_attr = AP_PSTRDUP(cmd->pool, their_attr);
+	} else if (strcasecmp(our_attr, "uidNumber") == 0) {
+		s_cfg->uidNumber_attr = AP_PSTRDUP(cmd->pool, their_attr);
+	} else if (strcasecmp(our_attr, "gidNumber") == 0) {
+		s_cfg->gidNumber_attr = AP_PSTRDUP(cmd->pool, their_attr);
 	} else {
-		return "LDAPAttributeName accepts only \"homeDirectory\" or \"uid\" for its first argument.";
+		return "LDAPAttributeName accepts only \"homeDirectory\", \"uid\", \"uidNumber\", or \"gidNumber\" for its first argument.";
 	}
 
 	return NULL;
 }
 
+#ifdef STANDARD20_MODULE_STUFF
 static const char *
 set_cache_timeout(cmd_parms *cmd, void *dummy, const char *arg)
 {
@@ -436,6 +460,7 @@ set_cache_timeout(cmd_parms *cmd, void *dummy, const char *arg)
 	}
 	return NULL;
 }
+#endif
 
 static const char *
 set_ldap_protocol_version(cmd_parms *cmd, void *dummy, const char *arg)
@@ -464,15 +489,23 @@ apply_config_defaults(ldap_userdir_config *cfg)
 	if (!cfg->username_attr) {
 		cfg->username_attr = "uid";
 	}
+	if (!cfg->uidNumber_attr) {
+		cfg->uidNumber_attr = "uidNumber";
+	}
+	if (!cfg->gidNumber_attr) {
+		cfg->gidNumber_attr = "gidNumber";
+	}
 	if (cfg->port == -1) {
 		cfg->port = LDAP_PORT;
 	}
 	if (cfg->search_scope == -1) {
 		cfg->search_scope = LDAP_SCOPE_SUBTREE;
 	}
+#ifdef STANDARD20_MODULE_STUFF
 	if (cfg->cache_timeout == -1) {
 		cfg->cache_timeout = 300;
 	}
+#endif /* STANDARD20_MODULE_STUFF */
 	if (cfg->protocol_version == -1) {
 		cfg->protocol_version = 3;
 	}
@@ -494,7 +527,7 @@ init_ldap_userdir(AP_POOL *pconf, AP_POOL *plog,
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.11");
+	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.12-20070525");
 	return OK;
 }
 #else /* STANDARD20_MODULE_STUFF */
@@ -507,7 +540,7 @@ init_ldap_userdir(server_rec *s, AP_POOL *p)
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component("mod_ldap_userdir/1.1.11");
+	ap_add_version_component("mod_ldap_userdir/1.1.12-20070525");
 }
 #endif /* STANDARD20_MODULE_STUFF */
 
@@ -561,6 +594,7 @@ connect_ldap_userdir(ldap_userdir_config *s_cfg)
 	}
 #endif /* TLS */
 
+#endif /* LDAP_API_VERSION >= 2000 */
 	if ((ret = ldap_simple_bind_s(s_cfg->ld, s_cfg->ldap_dn, s_cfg->dn_pass)) != LDAP_SUCCESS) {
 #ifdef STANDARD20_MODULE_STUFF
 		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: ldap_simple_bind() as %s failed: %s", s_cfg->ldap_dn, ldap_err2string(ret));
@@ -622,6 +656,29 @@ generate_filter(AP_POOL *p, char *template, const char *entity)
 	return filter;
 }
 
+void
+free_entry(struct hash_entry **entry)
+{
+	if (!*entry) {
+		return;
+	}
+
+	if ((*entry)->homedir) {
+		free((*entry)->homedir);
+	}
+	if ((*entry)->posix_username) {
+		free((*entry)->posix_username);
+	}
+	if ((*entry)->uid) {
+		free((*entry)->uid);
+	}
+	if ((*entry)->gid) {
+		free((*entry)->gid);
+	}
+
+	free((*entry));
+	*entry = NULL;
+}
 
 static struct hash_entry *
 cache_fetch(const ldap_userdir_config *s_cfg, const char *username)
@@ -629,85 +686,46 @@ cache_fetch(const ldap_userdir_config *s_cfg, const char *username)
 #ifndef STANDARD20_MODULE_STUFF
 	return NULL;
 #else /* STANDARD20_MODULE_STUFF */
-	struct hash_entry *cached;
+	struct hash_entry *entry;
 
 	/* A cache timeout of 0 disables caching. */
 	if (s_cfg->cache_timeout == 0) {
 		return NULL;
 	}
 
-	cached = apr_hash_get(s_cfg->homedirHt, username, APR_HASH_KEY_STRING);
-	if (cached == NULL) {
+	entry = apr_hash_get(s_cfg->homedirHt, username, APR_HASH_KEY_STRING);
+	if (entry == NULL) {
 		return NULL;
 	}
 
 	/* If this entry is still valid, return it. Otherwise, expire the
 	 * stale entry.
 	 */
-	if (cached->inserted_at + s_cfg->cache_timeout > time(NULL)) {
-		return cached;
+	if (entry->inserted_at + s_cfg->cache_timeout > time(NULL)) {
+		return entry;
 	}
 
-	free(cached->homedir);
-	free(cached->posix_username);
-	free(cached);
+	free_entry(&entry);
 	apr_hash_set(s_cfg->homedirHt, username, APR_HASH_KEY_STRING, NULL);
 	return NULL;
 #endif /* !STANDARD20_MODULE_STUFF */
 }
 
 static struct hash_entry *
-cache_set(const ldap_userdir_config *s_cfg,
-          const char *username, const char *homedir, const char *posix_username)
-{
-	struct hash_entry *cached;
-
-	/* A cache timeout of 0 disables caching. */
-	if (s_cfg->cache_timeout == 0) {
-		return NULL;
-	}
-
-	cached = (struct hash_entry *) malloc(sizeof(struct hash_entry));
-	if (cached == NULL) {
-		return NULL;
-	}
-
-	cached->homedir = strdup(homedir);
-	if (cached->homedir == NULL) {
-		free(cached);
-		return NULL;
-	}
-
-	cached->posix_username = strdup(posix_username);
-	if (cached->posix_username == NULL) {
-		free(cached->homedir);
-		free(cached);
-		return NULL;
-	}
-
-	cached->inserted_at = time(NULL);
-
-#ifdef STANDARD20_MODULE_STUFF
-	apr_hash_set(s_cfg->homedirHt, username, APR_HASH_KEY_STRING, cached);
-#endif /* STANDARD20_MODULE_STUFF */
-	return cached;
-}
-
-
-static struct hash_entry *
 get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
                  const char *username)
 {
-	char *filter, **values, *homedir, *posix_username,
-	     *attrs[] = {s_cfg->home_attr, s_cfg->username_attr, NULL};
-	int ret;
+	char *filter, **values,
+	     *attrs[] = {s_cfg->home_attr, s_cfg->username_attr,
+	                 s_cfg->uidNumber_attr, s_cfg->gidNumber_attr, NULL};
+	int i = 0, ret;
 	LDAPMessage *result, *e;
-	struct hash_entry *cached;
+	struct hash_entry *entry;
 
 #ifdef STANDARD20_MODULE_STUFF
-	cached = cache_fetch(s_cfg, username);
-	if (cached != NULL) {
-		return cached;
+	entry = cache_fetch(s_cfg, username);
+	if (entry != NULL) {
+		return entry;
 	}
 #endif /* STANDARD20_MODULE_STUFF */
 
@@ -725,7 +743,8 @@ get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
 		filter = generate_filter(r->pool, "(&(uid=%u)(objectClass=posixAccount))", username);
 	}
 
-	if ((ret = ldap_search_s(s_cfg->ld, s_cfg->basedn, s_cfg->search_scope, filter, attrs, 0, &result)) != LDAP_SUCCESS) {
+	ret = ldap_search_ext_s(s_cfg->ld, s_cfg->basedn, s_cfg->search_scope, filter, attrs, 0, NULL, NULL, &timeout, 2, &result);
+	if (ret != LDAP_SUCCESS) {
 		/* If the LDAP server went away, try to reconnect. If the reconnect
 		 * fails, give up and log accordingly.
 		 */
@@ -783,32 +802,90 @@ get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
 		return NULL;
 	}
 
-	if ((values = (char **) ldap_get_values(s_cfg->ld, e, s_cfg->home_attr)) == NULL) {
-#ifdef STANDARD20_MODULE_STUFF
-		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", s_cfg->home_attr, ldap_err2string(ldap_result2error(s_cfg->ld, result, 0)));
-#else
-		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", s_cfg->home_attr, ldap_err2string(ldap_result2error(s_cfg->ld, result, 0)));
-#endif
+	entry = (struct hash_entry *) malloc(sizeof(struct hash_entry));
+	if (entry == NULL) {
 		ldap_msgfree(result);
 		return NULL;
 	}
-	homedir = AP_PSTRDUP(r->pool, values[0]);
 
-	if ((values = (char **) ldap_get_values(s_cfg->ld, e, s_cfg->username_attr)) == NULL) {
+	while (attrs[i] != NULL) {
+		values = ldap_get_values(s_cfg->ld, e, attrs[i]);
+		if (!values) {
 #ifdef STANDARD20_MODULE_STUFF
-		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", s_cfg->username_attr, ldap_err2string(ldap_result2error(s_cfg->ld, result, 0)));
+			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", attrs[i], ldap_err2string(ldap_result2error(s_cfg->ld, result, 0)));
 #else
-		ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", s_cfg->username_attrr, ldap_err2string(ldap_result2error(s_cfg->ld, result, 0)));
+			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values(\"%s\") failed: %s", attrs[i], ldap_err2string(ldap_result2error(s_cfg->ld, result, 0)));
 #endif
-		ldap_msgfree(result);
-		return NULL;
+			if (strcmp(attrs[i], s_cfg->username_attr) == 0 ||
+			    strcmp(attrs[i], s_cfg->home_attr) == 0)
+			{
+				/* FIXME: no uid or homeDirectory; log this? */
+				free_entry(&entry);
+				ldap_msgfree(result);
+				return NULL;
+			}
+			continue;
+		}
+
+		/* There doesn't seem to be any per-server/thread pool we can use
+		 * here, so we need to jump through some hoops to make sure we
+		 * don't leak if anything fails.
+		 */
+		if (strcmp(attrs[i], s_cfg->home_attr) == 0) {
+			entry->homedir = strdup(values[0]);
+			ldap_value_free(values);
+			if (entry->homedir == NULL) {
+				free_entry(&entry);
+				ldap_msgfree(result);
+				return NULL;
+			}
+		} else if (strcmp(attrs[i], s_cfg->username_attr) == 0) {
+			entry->posix_username = strdup(values[0]);
+			ldap_value_free(values);
+			if (entry->posix_username == NULL) {
+				free_entry(&entry);
+				ldap_msgfree(result);
+				return NULL;
+			}
+		} else if (strcmp(attrs[i], s_cfg->uidNumber_attr) == 0) {
+			entry->uid = strdup(values[0]);
+			ldap_value_free(values);
+			if (entry->uid == NULL) {
+				free_entry(&entry);
+				ldap_msgfree(result);
+				return NULL;
+			}
+		} else if (strcmp(attrs[i], s_cfg->gidNumber_attr) == 0) {
+			entry->gid = strdup(values[0]);
+			ldap_value_free(values);
+			if (entry->gid == NULL) {
+				free_entry(&entry);
+				ldap_msgfree(result);
+				return NULL;
+			}
+		} else {
+#ifdef STANDARD20_MODULE_STUFF
+			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: ldap_get_values() loop found unknown attr %s", attrs[i]);
+#else
+			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: ldap_get_values() loop found unknown attr %s", attrs[i]);
+#endif
+			ldap_value_free(values);
+		}
+
+		++i;
 	}
-	posix_username = AP_PSTRDUP(r->pool, values[0]);
+
+#ifdef STANDARD20_MODULE_STUFF
+	/* A cache timeout of 0 disables caching. */
+	if (s_cfg->cache_timeout != 0) {
+		entry->inserted_at = time(NULL);
+		apr_hash_set(s_cfg->homedirHt, entry->posix_username,
+			APR_HASH_KEY_STRING, entry);
+	}
+#endif /* STANDARD20_MODULE_STUFF */
 
 	ldap_msgfree(result);
-	ldap_value_free(values);
-
-	return cache_set(s_cfg, username, homedir, posix_username);
+	return entry;
 }
 
 static int
@@ -918,6 +995,8 @@ translate_ldap_userdir(request_rec *r)
 
 			/* For use in the get_suexec_identity phase. */
 			AP_TABLE_SETN(r->notes, "mod_ldap_userdir_user", user_info->posix_username);
+			AP_TABLE_SETN(r->notes, "mod_ldap_userdir_uid", user_info->uid);
+			AP_TABLE_SETN(r->notes, "mod_ldap_userdir_gid", user_info->gid);
 
 			return OK;
 		}
@@ -931,24 +1010,33 @@ translate_ldap_userdir(request_rec *r)
 #ifdef HAVE_UNIX_SUEXEC
 static ap_unix_identity_t *get_suexec_id_doer(const request_rec *r)
 {
-	ap_unix_identity_t *ugid = NULL;
-#if APR_HAS_USER
-	const char *username = apr_table_get(r->notes, "mod_ldap_userdir_user");
+	ap_unix_identity_t *ugid;
+	const char *username = apr_table_get(r->notes, "mod_ldap_userdir_user"),
+	           *uidNumber = apr_table_get(r->notes, "mod_ldap_userdir_uid"),
+			   *gidNumber = apr_table_get(r->notes, "mod_ldap_userdir_gid");
+	char *endptr = NULL;
 
-	if (username == NULL) {
+	if (!username || !uidNumber || !gidNumber) {
 		return NULL;
 	}
 
-	if ((ugid = apr_palloc(r->pool, sizeof(ap_unix_identity_t *))) == NULL) {
+	ugid = apr_palloc(r->pool, sizeof(ap_unix_identity_t *));
+	if (ugid == NULL) {
 		return NULL;
 	}
 
-	if (apr_uid_get(&ugid->uid, &ugid->gid, username, r->pool) != APR_SUCCESS) {
+	ugid->uid = (uid_t) strtoul(uidNumber, &endptr, 10);
+	if (endptr) {
+		/* FIXME: log? */
+		return NULL;
+	}
+	ugid->gid = (gid_t) strtoul(gidNumber, &endptr, 10);
+	if (endptr) {
+		/* FIXME: log? */
 		return NULL;
 	}
 
 	ugid->userdir = 1;
-#endif
 	return ugid;
 }
 #endif /* HAVE_UNIX_SUEXEC */
@@ -1012,8 +1100,6 @@ static const command_rec ldap_userdir_cmds[] = {
 	 "whether to use an encrypted connection to the LDAP server"},
 	{"LDAPAttributeName", set_attr_name, NULL, RSRC_CONF, TAKE2,
 	 "alternate LDAP attribute names to use"},
-	{"LDAPUserDirCacheTimeout", set_cache_timeout, NULL, RSRC_CONF, TAKE1,
-	 "how long, in seconds, to store cached LDAP entries"},
 	{"LDAPProtocolVersion", set_ldap_protocol_version, NULL, RSRC_CONF, TAKE1,
 	 "the LDAP protocol version to use"},
 #endif

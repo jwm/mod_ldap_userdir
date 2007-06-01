@@ -1,5 +1,5 @@
-mod_ldap_userdir v1.1.11
-=======================
+mod_ldap_userdir v1.1.12
+========================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
 user home directories (for /~user URLs) from an LDAP directory.
@@ -39,8 +39,8 @@ the source distribution.
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.11.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1.11
+* gzip -dc mod_ldap_userdir-1.1.12.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.12
 * ./configure --with-activate
 * make
 * make install
@@ -77,6 +77,19 @@ the source distribution.
 ==========
 4. Changes
 ==========
+
+v1.1.12:
+* Updated the suexec hooks to fetch the user's UID and GID (uidNumber and
+  gidNumber attributes, respectively) from the LDAP directory instead of
+  relying on Apache to fetch them for us. This allows suexec access for
+  LDAP-only users with no OS support required for looking up these users'
+  UID/GIDs.
+* Removed the LDAPUserDirCacheTimeout directive from the Apache 1.x build. 
+  Caching is only supported with Apache 2.0 and later, so this directive was
+  being silently ignored under Apache 1.x. If you run Apache 1.x, you *must*
+  remove the LDAPUserDirCacheTimeout directive from your configuration.
+* Fix handling of the cache timeout, so setting it to 0 seconds (to disable
+  caching) now works.
 
 v1.1.11:
 * Add LDAPProtocolVersion directive to specify the LDAP protocol version
