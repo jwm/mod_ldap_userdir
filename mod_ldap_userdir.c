@@ -1078,7 +1078,7 @@ static ap_unix_identity_t *get_suexec_id_doer(const request_rec *r)
 	ap_unix_identity_t *ugid;
 	const char *username = apr_table_get(r->notes, "mod_ldap_userdir_user"),
 	           *uidNumber = apr_table_get(r->notes, "mod_ldap_userdir_uid"),
-			   *gidNumber = apr_table_get(r->notes, "mod_ldap_userdir_gid");
+	           *gidNumber = apr_table_get(r->notes, "mod_ldap_userdir_gid");
 	char *endptr = NULL;
 
 	if (!username || !uidNumber || !gidNumber) {
