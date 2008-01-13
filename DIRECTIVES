@@ -15,9 +15,12 @@
 
 * LDAPUserDirServerURL
   The LDAP URL to use. The attributes and extensions fields of the URL are
-  ignored.
+  ignored. The attributes portion of the URL is ignored; use
+  LDAPAttributeName to change the expected attribute names. Escapes (%u/%v)
+  used in the filter portion of the URL must have their percent signs
+  escaped by replacing them with "%25".
 
-  Example: LDAPUserDirServerURL ldap://server.example.com/dc=example,dc=com??sub?(uid=%v)
+  Example: LDAPUserDirServerURL ldap://server.example.com/dc=example,dc=com??sub?(uid=%25v)
 
 * LDAPUserDirDNInfo
   The DN and password to use when binding to the LDAP server. If this
