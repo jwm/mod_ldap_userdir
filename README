@@ -78,6 +78,20 @@ the source distribution.
 4. Changes
 ==========
 
+v1.1.13:
+* Missed ldap_init() -> ldap_initialize() change when making changes to
+  comply with draft-ietf-ldapext-ldap-c-api-04. Older versions may segfault
+  on 64-bit systems when mod_ldap_userdir is built with more recent OpenLDAP
+  SDK headers.
+* Previous versions enabled TLS when the ldaps:// scheme was specified in
+  LDAPUserdirServerURL URL. This behavior was incorrect, since ldaps://
+  indicates LDAP over SSL (port 636 by default) should be enabled. If you
+  wish to continue using TLS, you must modify your configuration to specify
+  the ldap:// scheme in the LDAPUserdirServerURL URL and add the directive
+  'LDAPUserDirUseTLS on' to your configuration.
+* LDAPUserDirUseTLS now throws a configuration error when TLS is enabled and
+  the ldaps:// scheme is specified in the LDAPUserdirServerURL URL.
+
 v1.1.12:
 * Updated the suexec hooks to fetch the user's UID and GID (uidNumber and
   gidNumber attributes, respectively) from the LDAP directory instead of

@@ -1,6 +1,6 @@
 /*
  * mod_ldap_userdir - LDAP UserDir module for the Apache web server
- * Copyright 1999, 2000-7, John Morrissey <jwm@horde.net>
+ * Copyright 1999, 2000-8, John Morrissey <jwm@horde.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.12-20070601
+ * mod_ldap_userdir v1.1.13-20081007
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -125,10 +125,16 @@ module MODULE_VAR_EXPORT ldap_userdir_module;
 
 typedef struct ldap_userdir_config {
 	char *userdir;
-	char *server, *ldap_dn, *dn_pass,
+#if LDAP_API_VERSION >= 2000
+	char *url;
+#else /* LDAP_API_VERSION >= 2000 */
+	char *server;
+	int port;
+#endif /* LDAP_API_VERSION >= 2000 */
+	char *ldap_dn, *dn_pass,
 	     *basedn, *filter_template,
 	     *home_attr, *username_attr, *uidNumber_attr, *gidNumber_attr;
-	int port, search_scope, protocol_version;
+	int search_scope, protocol_version;
 #ifdef STANDARD20_MODULE_STUFF
 	int cache_timeout;
 #endif
@@ -160,7 +166,9 @@ create_ldap_userdir_config(AP_POOL *p, server_rec *s)
 {
 	ldap_userdir_config *newcfg = (ldap_userdir_config *) AP_PCALLOC(p, sizeof(ldap_userdir_config));
 
+#if LDAP_API_VERSION < 2000
 	newcfg->port = -1;
+#endif /* LDAP_API_VERSION < 2000 */
 	newcfg->search_scope = -1;
 	newcfg->protocol_version = -1;
 #ifdef STANDARD20_MODULE_STUFF
@@ -191,9 +199,15 @@ merge_ldap_userdir_config(AP_POOL *p, void *server1_conf, void *server2_conf)
 	if (!merged_cfg->userdir) {
 		merged_cfg->userdir = AP_PSTRDUP(p, s_cfg1->userdir);
 	}
+#if LDAP_API_VERSION >= 2000
+	if (!merged_cfg->url) {
+		merged_cfg->url = AP_PSTRDUP(p, s_cfg1->url);
+	}
+#else /* LDAP_API_VERSION >= 2000 */
 	if (!merged_cfg->server) {
 		merged_cfg->server = AP_PSTRDUP(p, s_cfg1->server);
 	}
+#endif /* LDAP_API_VERSION >= 2000 */
 	if (!merged_cfg->ldap_dn) {
 		merged_cfg->ldap_dn = AP_PSTRDUP(p, s_cfg1->ldap_dn);
 	}
@@ -218,9 +232,11 @@ merge_ldap_userdir_config(AP_POOL *p, void *server1_conf, void *server2_conf)
 	if (!merged_cfg->gidNumber_attr) {
 		merged_cfg->gidNumber_attr = AP_PSTRDUP(p, s_cfg1->gidNumber_attr);
 	}
+#if LDAP_API_VERSION < 2000
 	if (merged_cfg->port == -1) {
 		merged_cfg->port = s_cfg1->port;
 	}
+#endif /* LDAP_API_VERSION < 2000 */
 	if (merged_cfg->search_scope == -1) {
 		merged_cfg->search_scope = s_cfg1->search_scope;
 	}
@@ -260,16 +276,14 @@ set_url(cmd_parms *cmd, void *dummy, const char *arg)
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 	LDAPURLDesc *url;
 
-	if (s_cfg->server || s_cfg->basedn || s_cfg->filter_template ||
-	    s_cfg->search_scope != -1)
-	{
-		return "LDAPUserDirServerURL can't be combined with LDAPUserDirServer, LDAPUserDirBaseDN, LDAPUserDirFilter, or LDAPUserDirSearchScope.";
+#if LDAP_API_VERSION < 2000
+	if (s_cfg->server) {
+		return "LDAPUserDirServerURL can't be combined with LDAPUserDirServer.";
 	}
-#ifdef TLS
-	if (s_cfg->use_tls != -1) {
-		return "LDAPUserDirServerURL can't be combined with LDAPUserDirUseTLS.";
+#endif /* LDAP_API_VERSION < 2000 */
+	if (s_cfg->basedn || s_cfg->filter_template || s_cfg->search_scope != -1) {
+		return "LDAPUserDirServerURL can't be combined with LDAPUserDirBaseDN, LDAPUserDirFilter, or LDAPUserDirSearchScope.";
 	}
-#endif /* TLS */
 	s_cfg->got_url = 1;
 
 	if (ldap_url_parse(arg, &url) != LDAP_SUCCESS) {
@@ -284,26 +298,26 @@ set_url(cmd_parms *cmd, void *dummy, const char *arg)
 # define SCHEME_IS(scheme) (strncasecmp(arg, scheme, strlen(scheme)) == 0)
 #endif /* HAVE_LDAPURLDESC_LUD_SCHEME */
 
-#ifdef TLS
-	if (SCHEME_IS("ldap:")) {
-		s_cfg->use_tls = 0;
-	} else if (SCHEME_IS("ldaps:")) {
-		s_cfg->use_tls = 1;
-	} else {
+	if (!SCHEME_IS("ldaps:") && !SCHEME_IS("ldap:")) {
 		return "Invalid scheme specified by LDAPUserDirServerURL. Valid schemes are 'ldap' or 'ldaps'.";
 	}
-#else /* TLS */
-	if (!SCHEME_IS("ldap:")) {
-		return "Invalid scheme specified by LDAPUserDirServerURL. Valid schemes are 'ldap'.";
+
+#ifdef TLS
+	if (SCHEME_IS("ldaps:") && s_cfg->use_tls != -1) {
+		return "ldaps:// scheme in LDAPUserDirServerURL can't be combined with LDAPUserDirUseTLS.";
 	}
 #endif /* TLS */
 
+#if LDAP_API_VERSION >= 2000
+	s_cfg->url = AP_PSTRDUP(cmd->pool, arg);
+#else
 	if (url->lud_host != NULL) {
 		s_cfg->server = AP_PSTRDUP(cmd->pool, url->lud_host);
 	}
 	if (url->lud_port != 0) {
 		s_cfg->port = url->lud_port;
 	}
+#endif /* LDAP_API_VERSION >= 2000 */
 	if (url->lud_dn != NULL) {
 		s_cfg->basedn = AP_PSTRDUP(cmd->pool, url->lud_dn);
 	}
@@ -331,7 +345,12 @@ set_server(cmd_parms *cmd, void *dummy, const char *arg)
 		return "LDAPUserDirServer must be supplied with the name of an LDAP server.";
 	}
 
+
+#if LDAP_API_VERSION >= 2000
+	s_cfg->url = AP_PSTRCAT(cmd->pool, "ldap://", arg, "/", NULL);
+#else /* LDAP_API_VERSION >= 2000 */
 	s_cfg->server = AP_PSTRDUP(cmd->pool, arg);
+#endif /* LDAP_API_VERSION >= 2000 */
 	return NULL;
 }
 
@@ -418,8 +437,10 @@ set_use_tls(cmd_parms *cmd, void *dummy, int arg)
 #ifdef TLS
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 
-	if (s_cfg->got_url) {
-		return "LDAPUserDirUseTLS can't be combined with LDAPUserDirServerURL.";
+	if (arg == 1 && s_cfg->got_url &&
+	    strncasecmp(s_cfg->url, "ldaps:", 6) == 0) {
+
+		return "LDAPUserDirUseTLS can't be combined with ldaps:// in LDAPUserDirServerURL.";
 	}
 	if (s_cfg->protocol_version < 3 && s_cfg->protocol_version != -1) {
 		return "LDAPProtocolVersion must be set to version 3 to use the LDAPUserDirUseTLS directive.";
@@ -428,7 +449,7 @@ set_use_tls(cmd_parms *cmd, void *dummy, int arg)
 	s_cfg->use_tls = arg;
 	return NULL;
 #else
-	return "mod_ldap_userdir was not built with LDAP TLS/SSL support.";
+	return "mod_ldap_userdir was not built with LDAP TLS support.";
 #endif /* TLS */
 }
 
@@ -479,7 +500,8 @@ set_ldap_protocol_version(cmd_parms *cmd, void *dummy, const char *arg)
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 
 	s_cfg->protocol_version = strtol(arg, &invalid_char, 10);
-	if (arg[0] == '\0' || *invalid_char != '\0' || (s_cfg->protocol_version != 2 && s_cfg->protocol_version != 3)) {
+	if (arg[0] == '\0' || *invalid_char != '\0' ||
+	    (s_cfg->protocol_version != 2 && s_cfg->protocol_version != 3)) {
 		return "LDAPProtocolVersion must be set as version 2 or version 3.";
 	}
 #ifdef TLS
@@ -505,9 +527,11 @@ apply_config_defaults(ldap_userdir_config *cfg)
 	if (!cfg->gidNumber_attr) {
 		cfg->gidNumber_attr = "gidNumber";
 	}
+#if LDAP_API_VERSION < 2000
 	if (cfg->port == -1) {
 		cfg->port = LDAP_PORT;
 	}
+#endif /* LDAP_API_VERSION < 2000 */
 	if (cfg->search_scope == -1) {
 		cfg->search_scope = LDAP_SCOPE_SUBTREE;
 	}
@@ -537,7 +561,7 @@ init_ldap_userdir(AP_POOL *pconf, AP_POOL *plog,
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.12-20070601");
+	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.13-20081007");
 	return OK;
 }
 #else /* STANDARD20_MODULE_STUFF */
@@ -550,7 +574,7 @@ init_ldap_userdir(server_rec *s, AP_POOL *p)
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component("mod_ldap_userdir/1.1.12-20070601");
+	ap_add_version_component("mod_ldap_userdir/1.1.13-20081007");
 }
 #endif /* STANDARD20_MODULE_STUFF */
 
@@ -583,14 +607,27 @@ connect_ldap_userdir(ldap_userdir_config *s_cfg)
 	struct berval bindcred;
 #endif
 
-	if ((s_cfg->ld = (LDAP *) ldap_init(s_cfg->server, s_cfg->port)) == NULL) {
-#ifdef STANDARD20_MODULE_STUFF
-		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: ldap_init() to %s failed: %s", s_cfg->server, strerror(errno));
-#else
-		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: ldap_init() to %s failed: %s", s_cfg->server, strerror(errno));
-#endif
+#if LDAP_API_VERSION >= 2000
+	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: ldap_initialize() url: %s", s_cfg->url);
+	ret = ldap_initialize(&(s_cfg->ld), s_cfg->url);
+	if (ret != LDAP_SUCCESS) {
+# ifdef STANDARD20_MODULE_STUFF
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: ldap_initialize() to %s failed: %s", s_cfg->url, strerror(ret));
+# else
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: ldap_initialize() to %s failed: %s", s_cfg->url, strerror(ret));
+# endif
 		return -1;
 	}
+#else /* LDAP_API_VERSION >= 2000 */
+	if ((s_cfg->ld = (LDAP *) ldap_init(s_cfg->server, s_cfg->port)) == NULL) {
+# ifdef STANDARD20_MODULE_STUFF
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: ldap_init() to %s failed: %s", s_cfg->server, strerror(errno));
+# else
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: ldap_init() to %s failed: %s", s_cfg->server, strerror(errno));
+# endif
+		return -1;
+	}
+#endif /* LDAP_API_VERSION >= 2000 */
 
 	switch (s_cfg->protocol_version) {
 	case 2:
