@@ -608,7 +608,6 @@ connect_ldap_userdir(ldap_userdir_config *s_cfg)
 #endif
 
 #if LDAP_API_VERSION >= 2000
-	ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: ldap_initialize() url: %s", s_cfg->url);
 	ret = ldap_initialize(&(s_cfg->ld), s_cfg->url);
 	if (ret != LDAP_SUCCESS) {
 # ifdef STANDARD20_MODULE_STUFF
