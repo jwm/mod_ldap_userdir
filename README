@@ -91,6 +91,8 @@ v1.1.13:
   'LDAPUserDirUseTLS on' to your configuration.
 * LDAPUserDirUseTLS now throws a configuration error when TLS is enabled and
   the ldaps:// scheme is specified in the LDAPUserdirServerURL URL.
+* Fixes to bugs in suexec support submitted by Witold Baryluk
+  <baryluk@smp.if.uj.edu.pl>.
 
 v1.1.12:
 * Updated the suexec hooks to fetch the user's UID and GID (uidNumber and

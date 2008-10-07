@@ -997,6 +997,7 @@ translate_ldap_userdir(request_rec *r)
 	char *name = r->uri;
 	const ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(r->server->module_config, &ldap_userdir_module);
 	const char *userdirs = s_cfg->userdir;
+	request_rec *notes_req;
 	struct hash_entry *user_info;
 
 	/*
@@ -1095,10 +1096,18 @@ translate_ldap_userdir(request_rec *r)
 				r->finfo = statbuf;
 			}
 
+			/* We could be servicing a sub-request; make sure we put notes
+			 * on the main request.
+			 */
+			if (r->main) {
+				notes_req = r->main;
+			} else {
+				notes_req = r;
+			}
 			/* For use in the get_suexec_identity phase. */
-			AP_TABLE_SETN(r->notes, "mod_ldap_userdir_user", user_info->posix_username);
-			AP_TABLE_SETN(r->notes, "mod_ldap_userdir_uid", user_info->uid);
-			AP_TABLE_SETN(r->notes, "mod_ldap_userdir_gid", user_info->gid);
+			AP_TABLE_SETN(notes_req->notes, "mod_ldap_userdir_user", user_info->posix_username);
+			AP_TABLE_SETN(notes_req->notes, "mod_ldap_userdir_uid", user_info->uid);
+			AP_TABLE_SETN(notes_req->notes, "mod_ldap_userdir_gid", user_info->gid);
 
 			return OK;
 		}
@@ -1128,13 +1137,21 @@ static ap_unix_identity_t *get_suexec_id_doer(const request_rec *r)
 	}
 
 	ugid->uid = (uid_t) strtoul(uidNumber, &endptr, 10);
-	if (endptr) {
-		/* FIXME: log? */
+	if (*endptr != '\0') {
+# ifdef STANDARD20_MODULE_STUFF
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: user %s has invalid UID %s, ignoring suexec request.", username, uidNumber);
+# else
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: user %s has invalid UID %s, ignoring suexec request.", username, uidNumber);
+# endif
 		return NULL;
 	}
 	ugid->gid = (gid_t) strtoul(gidNumber, &endptr, 10);
-	if (endptr) {
-		/* FIXME: log? */
+	if (*endptr != '\0') {
+# ifdef STANDARD20_MODULE_STUFF
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: user %s has invalid GID %s, ignoring suexec request.", username, gidNumber);
+# else
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: user %s has invalid GID %s, ignoring suexec request.", username, gidNumber);
+# endif
 		return NULL;
 	}
 
