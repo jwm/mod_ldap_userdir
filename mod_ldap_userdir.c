@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.13-20081007
+ * mod_ldap_userdir v1.1.13-20081008
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -561,7 +561,7 @@ init_ldap_userdir(AP_POOL *pconf, AP_POOL *plog,
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.13-20081007");
+	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.13-20081008");
 	return OK;
 }
 #else /* STANDARD20_MODULE_STUFF */
@@ -574,7 +574,7 @@ init_ldap_userdir(server_rec *s, AP_POOL *p)
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component("mod_ldap_userdir/1.1.13-20081007");
+	ap_add_version_component("mod_ldap_userdir/1.1.13-20081008");
 }
 #endif /* STANDARD20_MODULE_STUFF */
 
@@ -912,19 +912,20 @@ get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
 		values = ldap_get_values(s_cfg->ld, e, attrs[i]);
 #endif
 		if (!values) {
-#ifdef STANDARD20_MODULE_STUFF
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: couldn't fetch values for attr %s: %s", attrs[i], result2errmsg(r, s_cfg->ld, result));
-#else
-			ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: couldn't fetch values for attr %s: %s", attrs[i], result2errmsg(r, s_cfg->ld, result));
-#endif
 			if (strcmp(attrs[i], s_cfg->username_attr) == 0 ||
 			    strcmp(attrs[i], s_cfg->home_attr) == 0)
 			{
-				/* FIXME: no uid or homeDirectory; log this? */
+#ifdef STANDARD20_MODULE_STUFF
+				ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: user %s has no %s attr, skipping request.", username, attrs[i]);
+#else
+				ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, r, "mod_ldap_userdir: user %s has no %s attr, skipping request.", username, attrs[i]);
+#endif
+
 				free_entry(&entry);
 				ldap_msgfree(result);
 				return NULL;
 			}
+			++i;
 			continue;
 		}
 
@@ -1120,13 +1121,31 @@ translate_ldap_userdir(request_rec *r)
 #ifdef HAVE_UNIX_SUEXEC
 static ap_unix_identity_t *get_suexec_id_doer(const request_rec *r)
 {
-	ap_unix_identity_t *ugid;
 	const char *username = apr_table_get(r->notes, "mod_ldap_userdir_user"),
 	           *uidNumber = apr_table_get(r->notes, "mod_ldap_userdir_uid"),
 	           *gidNumber = apr_table_get(r->notes, "mod_ldap_userdir_gid");
 	char *endptr = NULL;
+	const ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(r->server->module_config, &ldap_userdir_module);
+	ap_unix_identity_t *ugid;
 
-	if (!username || !uidNumber || !gidNumber) {
+	if (!username) {
+		return NULL;
+	}
+	if (!uidNumber) {
+# ifdef STANDARD20_MODULE_STUFF
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: user %s has no %s attr, ignoring suexec request.", username, s_cfg->uidNumber_attr);
+# else
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: user %s has no %s attr, ignoring suexec request.", username, s_cfg->uidNumber_attr);
+# endif
+		return NULL;
+	}
+
+	if (!gidNumber) {
+# ifdef STANDARD20_MODULE_STUFF
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: user %s has no %s attr, ignoring suexec request.", username, s_cfg->gidNumber_attr);
+# else
+		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: user %s has no %s attr, ignoring suexec request.", username, s_cfg->gidNumber_attr);
+# endif
 		return NULL;
 	}
 

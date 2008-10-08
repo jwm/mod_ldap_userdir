@@ -93,6 +93,13 @@ v1.1.13:
   the ldaps:// scheme is specified in the LDAPUserdirServerURL URL.
 * Fixes to bugs in suexec support submitted by Witold Baryluk
   <baryluk@smp.if.uj.edu.pl>.
+* Avoid infinite loop when LDAPUserDirDNInfo bind DN doesn't have access to
+  one or more LDAP attributes.
+* Logging improvements
+  * Don't complain about inaccessible [ug]idNumber values when reading the
+    user's LDAP entry, since we might not be using suexec.
+  * Complain in suexec handler if we found the user's LDAP entry but it
+    was missing [ug]idNumber values.
 
 v1.1.12:
 * Updated the suexec hooks to fetch the user's UID and GID (uidNumber and
