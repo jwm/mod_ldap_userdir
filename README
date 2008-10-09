@@ -1,4 +1,4 @@
-mod_ldap_userdir v1.1.13
+mod_ldap_userdir v1.1.14
 ========================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
@@ -39,8 +39,8 @@ the source distribution.
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.13.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1.13
+* gzip -dc mod_ldap_userdir-1.1.14.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.14
 * ./configure --with-activate
 * make
 * make install
@@ -77,6 +77,12 @@ the source distribution.
 ==========
 4. Changes
 ==========
+
+v1.1.14:
+* Avoid segfault attempting to free() uninitialized pointer when a user
+  does not have a uid or homeDirectory attr, one or both of those attrs
+  are not readable by the DN configured by LDAPUserDirDNInfo, or an
+  out-of-memory condition is encountered while fetching any LDAP attribute.
 
 v1.1.13:
 * Missed ldap_init() -> ldap_initialize() change when making changes to
