@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.14
+ * mod_ldap_userdir v1.1.15
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -561,7 +561,7 @@ init_ldap_userdir(AP_POOL *pconf, AP_POOL *plog,
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.14");
+	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.15");
 	return OK;
 }
 #else /* STANDARD20_MODULE_STUFF */
@@ -574,7 +574,7 @@ init_ldap_userdir(server_rec *s, AP_POOL *p)
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component("mod_ldap_userdir/1.1.14");
+	ap_add_version_component("mod_ldap_userdir/1.1.15");
 }
 #endif /* STANDARD20_MODULE_STUFF */
 
@@ -666,7 +666,11 @@ connect_ldap_userdir(ldap_userdir_config *s_cfg)
 
 #if LDAP_API_VERSION >= 2000
 	bindcred.bv_val = s_cfg->dn_pass;
-	bindcred.bv_len = strlen(s_cfg->dn_pass);
+	if (s_cfg->dn_pass != NULL) {
+		bindcred.bv_len = strlen(s_cfg->dn_pass);
+	} else {
+		bindcred.bv_len = 0;
+	}
 	ret = ldap_sasl_bind_s(s_cfg->ld, s_cfg->ldap_dn, NULL, &bindcred, NULL, NULL, NULL);
 #else /* LDAP_API_VERSION >= 2000 */
 	ret = ldap_simple_bind_s(s_cfg->ld, s_cfg->ldap_dn, s_cfg->dn_pass);

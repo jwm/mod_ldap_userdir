@@ -1,4 +1,4 @@
-mod_ldap_userdir v1.1.14
+mod_ldap_userdir v1.1.15
 ========================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
@@ -39,8 +39,8 @@ the source distribution.
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.14.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1.14
+* gzip -dc mod_ldap_userdir-1.1.15.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.15
 * ./configure --with-activate
 * make
 * make install
@@ -77,6 +77,10 @@ the source distribution.
 ==========
 4. Changes
 ==========
+
+v1.1.15:
+* Fix segfault when LDAPUserDirDNInfo isn't specified (implicitly specifying
+  anonymous binds) with modern LDAP SDKs (LDAP_API_VERSION >= 2000).
 
 v1.1.14:
 * Avoid segfault attempting to free() uninitialized pointer when a user
