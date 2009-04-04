@@ -1,6 +1,6 @@
 /*
  * mod_ldap_userdir - LDAP UserDir module for the Apache web server
- * Copyright 1999, 2000-8, John Morrissey <jwm@horde.net>
+ * Copyright 1999, 2000-9, John Morrissey <jwm@horde.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.15
+ * mod_ldap_userdir v1.1.16
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -561,7 +561,7 @@ init_ldap_userdir(AP_POOL *pconf, AP_POOL *plog,
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.15");
+	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.16");
 	return OK;
 }
 #else /* STANDARD20_MODULE_STUFF */
@@ -574,7 +574,7 @@ init_ldap_userdir(server_rec *s, AP_POOL *p)
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component("mod_ldap_userdir/1.1.15");
+	ap_add_version_component("mod_ldap_userdir/1.1.16");
 }
 #endif /* STANDARD20_MODULE_STUFF */
 
