@@ -42,6 +42,7 @@ the source distribution.
 * gzip -dc mod_ldap_userdir-1.1.16.tar.gz | tar xf -
 * cd mod_ldap_userdir-1.1.16
 * ./configure --with-activate
+  Run './configure --help' for information on other build options.
 * make
 * make install
 
