@@ -75,6 +75,12 @@ the source distribution.
   Of course, you will need to update these configuration directives with
   the proper values for your environment.
 
+  If you wish to use the user's home directory itself (instead of a
+  subdirectory below it) for Apache-accessible content, specify "."
+  for the directory:
+
+    LDAPUserDir .
+
 ==========
 4. Changes
 ==========
