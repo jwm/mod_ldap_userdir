@@ -77,7 +77,9 @@
 # define AP_STRSTR_C ap_strstr_c
 # define AP_STRCHR_C ap_strchr_c
 # define AP_TABLE_SETN apr_table_setn
+# define AP_ARRAY_HEADER apr_array_header_t
 # define AP_MAKE_ARRAY apr_array_make
+# define AP_COPY_ARRAY_HDR apr_array_copy_hdr
 # define AP_PUSH_ARRAY apr_array_push
 # if !defined(WIN32) && !defined(OS2) && !defined(BEOS) && !defined(NETWARE)
 #  define HAVE_UNIX_SUEXEC
@@ -92,7 +94,9 @@
 # define AP_STRSTR_C strstr
 # define AP_STRCHR_C strchr
 # define AP_TABLE_SETN ap_table_setn
+# define AP_ARRAY_HEADER array_header
 # define AP_MAKE_ARRAY ap_make_array
+# define AP_COPY_ARRAY_HDR ap_copy_array_hdr
 # define AP_PUSH_ARRAY ap_push_array
 # if !defined(NETWARE)
 #  include <sys/types.h>
@@ -142,11 +146,9 @@ module MODULE_VAR_EXPORT ldap_userdir_module;
 typedef struct ldap_userdir_config {
 	char *userdir;
 
-#ifdef STANDARD20_MODULE_STUFF
-	apr_array_header_t *servers;
-#else
-	array_header *servers;
-#endif
+	AP_ARRAY_HEADER *userdirs;
+
+	AP_ARRAY_HEADER *servers;
 	unsigned int cur_server_index;
 
 #if LDAP_API_VERSION >= 2000
@@ -193,6 +195,8 @@ create_ldap_userdir_config(AP_POOL *p, server_rec *s)
 {
 	ldap_userdir_config *newcfg = (ldap_userdir_config *) AP_PCALLOC(p, sizeof(ldap_userdir_config));
 
+	newcfg->userdirs = AP_MAKE_ARRAY(p, 1, sizeof(char *));
+
 	newcfg->servers = AP_MAKE_ARRAY(p, 2, sizeof(char *));
 
 #if LDAP_API_VERSION < 2000
@@ -227,12 +231,12 @@ merge_ldap_userdir_config(AP_POOL *p, void *server1_conf, void *server2_conf)
 		(ldap_userdir_config *) AP_PCALLOC(p, sizeof(ldap_userdir_config));
 	memcpy(merged_cfg, s_cfg2, sizeof(ldap_userdir_config));
 
-	if (!merged_cfg->userdir) {
-		merged_cfg->userdir = AP_PSTRDUP(p, s_cfg1->userdir);
+	if (!merged_cfg->userdirs) {
+		merged_cfg->userdirs = AP_COPY_ARRAY_HDR(p, s_cfg1->userdirs);
 	}
 
 	if (!merged_cfg->servers) {
-		merged_cfg->servers = apr_array_copy_hdr(p, s_cfg1->servers);
+		merged_cfg->servers = AP_COPY_ARRAY_HDR(p, s_cfg1->servers);
 	}
 
 #if LDAP_API_VERSION >= 2000
@@ -301,10 +305,10 @@ set_ldap_user_dir(cmd_parms *cmd, void *dummy, const char *arg)
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 
 	if (strlen(arg) == 0) {
-		return "LDAPUserDir must be supplied with the public subdirectory in users' home directories (e.g., 'public_html').";
+		return "LDAPUserDir must be supplied with the public subdirectory in users' home directories (for example, 'public_html' or '.').";
 	}
 
-	s_cfg->userdir = AP_PSTRDUP(cmd->pool, arg);
+	*(char **)AP_PUSH_ARRAY(s_cfg->userdirs) = AP_PSTRDUP(cmd->pool, arg);
 	return NULL;
 }
 
@@ -1096,16 +1100,15 @@ translate_ldap_userdir(request_rec *r)
 {
 	const char *w, *dname;
 	char *name = r->uri;
+	int userdir_index;
 	const ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(r->server->module_config, &ldap_userdir_module);
-	const char *userdirs = s_cfg->userdir;
 	request_rec *notes_req;
 	struct hash_entry *user_info;
 
-	/*
-	 * If the URI doesn't match our basic pattern, we've nothing to do with
-	 * it.
+	/* If the URI doesn't match our basic pattern, we've nothing to do
+	 * with it.
 	 */
-	if ((s_cfg->userdir == NULL) ||
+	if ((s_cfg->userdirs->nelts == 0) ||
 	    (name[0] != '/') ||
 	    (name[1] != '~'))
 	{
@@ -1115,8 +1118,7 @@ translate_ldap_userdir(request_rec *r)
 	dname = name + 2;
 	w = ap_getword(r->pool, &dname, '/');
 
-	/*
-	 * This 'dname' funny business involves backing it up to capture the '/'
+	/* This 'dname' funny business involves backing it up to capture the '/'
 	 * delimiting the "/~user" part from the rest of the URL, in case there
 	 * was one (the case where there wasn't being just "GET /~user HTTP/1.0",
 	 * for which we don't want to tack on a '/' onto the filename).
@@ -1125,9 +1127,7 @@ translate_ldap_userdir(request_rec *r)
 		--dname;
 	}
 
-	/*
-	 * If there's no username, it's not for us. Ignore . and .. as well.
-	 */
+	/* If there's no username, it's not for us. Ignore . and .. as well. */
 	if (w[0] == '\0' || (w[1] == '.' && (w[2] == '\0' || (w[2] == '.' && w[3] == '\0')))) {
 		return DECLINED;
 	}
@@ -1137,8 +1137,10 @@ translate_ldap_userdir(request_rec *r)
 		return DECLINED;
 	}
 
-	while (*userdirs) {
-		const char *userdir = ap_getword_conf(r->pool, &userdirs);
+	userdir_index = 0;
+	while (userdir_index < s_cfg->userdirs->nelts) {
+		const char *userdir = ((char **)(s_cfg->userdirs->elts))[userdir_index];
+		++userdir_index;
 		char *filename;
 #ifdef STANDARD20_MODULE_STUFF
 		apr_finfo_t statbuf;
@@ -1182,7 +1184,7 @@ translate_ldap_userdir(request_rec *r)
 		 */
 #ifdef STANDARD20_MODULE_STUFF
 		if (filename &&
-		    (!*userdirs ||
+		    (userdir_index >= s_cfg->userdirs->nelts ||
 		     ((rv = apr_stat(&statbuf, filename, APR_FINFO_MIN, r->pool)) == APR_SUCCESS ||
 		      rv == APR_INCOMPLETE)))
 #else
@@ -1193,7 +1195,7 @@ translate_ldap_userdir(request_rec *r)
 			/* When statbuf contains info on r->filename, we can save
 			 * a syscall by copying it to r->finfo.
 			 */
-			if (*userdirs && dname[0] == 0) {
+			if (userdir_index < s_cfg->userdirs->nelts && dname[0] == 0) {
 				r->finfo = statbuf;
 			}
 
@@ -1297,7 +1299,7 @@ register_hooks(AP_POOL *p)
 
 static const command_rec ldap_userdir_cmds[] = {
 #ifdef STANDARD20_MODULE_STUFF
-	AP_INIT_RAW_ARGS("LDAPUserDir", set_ldap_user_dir, NULL, RSRC_CONF,
+	AP_INIT_ITERATE("LDAPUserDir", set_ldap_user_dir, NULL, RSRC_CONF,
 	                 "the public subdirectory in users' home directories"),
 	AP_INIT_ITERATE("LDAPUserDirServer", set_server, NULL, RSRC_CONF,
 	              "the LDAP directory server that will be used for LDAP UserDir queries"),
@@ -1320,7 +1322,7 @@ static const command_rec ldap_userdir_cmds[] = {
 	AP_INIT_TAKE1("LDAPProtocolVersion", set_ldap_protocol_version, NULL, RSRC_CONF,
 	              "the LDAP protocol version to use"),
 #else /* STANDARD20_MODULE_STUFF */
-	{"LDAPUserDir", set_ldap_user_dir, NULL, RSRC_CONF, RAW_ARGS,
+	{"LDAPUserDir", set_ldap_user_dir, NULL, RSRC_CONF, ITERATE,
 	 "the public subdirectory in users' home directories"},
 	{"LDAPUserDirServer", set_server, NULL, RSRC_CONF, ITERATE,
 	 "the LDAP directory server that will be used for LDAP UserDir queries"},
