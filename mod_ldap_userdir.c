@@ -65,9 +65,9 @@
 #undef strtoul
 #ifdef STANDARD20_MODULE_STUFF
 # define APR_WANT_STRFUNC
-# include "apr_want.h"
-# include "apr_strings.h"
 # include "apr_hash.h"
+# include "apr_strings.h"
+# include "apr_want.h"
 # include <time.h>
 # define AP_POOL apr_pool_t
 # define AP_PSTRDUP apr_pstrdup
@@ -77,6 +77,8 @@
 # define AP_STRSTR_C ap_strstr_c
 # define AP_STRCHR_C ap_strchr_c
 # define AP_TABLE_SETN apr_table_setn
+# define AP_MAKE_ARRAY apr_array_make
+# define AP_PUSH_ARRAY apr_array_push
 # if !defined(WIN32) && !defined(OS2) && !defined(BEOS) && !defined(NETWARE)
 #  define HAVE_UNIX_SUEXEC
 #  include "unixd.h"  /* Contains the suexec_identity hook used on Unix */
@@ -90,6 +92,8 @@
 # define AP_STRSTR_C strstr
 # define AP_STRCHR_C strchr
 # define AP_TABLE_SETN ap_table_setn
+# define AP_MAKE_ARRAY ap_make_array
+# define AP_PUSH_ARRAY ap_push_array
 # if !defined(NETWARE)
 #  include <sys/types.h>
 # endif
@@ -102,13 +106,25 @@
 #include <lber.h>
 #include <ldap.h>
 
+#if defined(LDAP_API_FEATURE_X_OPENLDAP) && (LDAP_VENDOR_VERSION >= 192)
+# define HAS_LDAP_UNBIND_EXT_S
+#endif
+
+#if defined(LDAP_API_FEATURE_X_OPENLDAP) && (LDAP_VENDOR_VERSION >= 19905)
+# define HAS_LDAP_INITIALIZE
+#endif
+
 #if LDAP_API_VERSION >= 2000
 # define LDAP_VALUE(values, i) (values[i]->bv_val)
 # define LDAP_VALUE_FREE(values) (ldap_value_free_len(values))
-# define LDAP_UNBIND(ld) (ldap_unbind_ext_s(ld, NULL, NULL))
 #else
 # define LDAP_VALUE(values, i) (values[i])
 # define LDAP_VALUE_FREE(values) (ldap_value_free(values))
+#endif
+
+#ifdef HAS_LDAP_UNBIND_EXT_S
+# define LDAP_UNBIND(ld) (ldap_unbind_ext_s(ld, NULL, NULL))
+#else
 # define LDAP_UNBIND(ld) (ldap_unbind_s(ld, NULL, NULL))
 #endif
 
@@ -125,19 +141,30 @@ module MODULE_VAR_EXPORT ldap_userdir_module;
 
 typedef struct ldap_userdir_config {
 	char *userdir;
+
+#ifdef STANDARD20_MODULE_STUFF
+	apr_array_header_t *servers;
+#else
+	array_header *servers;
+#endif
+	unsigned int cur_server_index;
+
 #if LDAP_API_VERSION >= 2000
 	char *url;
 #else /* LDAP_API_VERSION >= 2000 */
 	char *server;
 	int port;
 #endif /* LDAP_API_VERSION >= 2000 */
+
 	char *ldap_dn, *dn_pass,
 	     *basedn, *filter_template,
 	     *home_attr, *username_attr, *uidNumber_attr, *gidNumber_attr;
 	int search_scope, protocol_version;
+
 #ifdef STANDARD20_MODULE_STUFF
 	int cache_timeout;
 #endif
+
 #ifdef TLS
 	int use_tls;
 #endif
@@ -166,23 +193,27 @@ create_ldap_userdir_config(AP_POOL *p, server_rec *s)
 {
 	ldap_userdir_config *newcfg = (ldap_userdir_config *) AP_PCALLOC(p, sizeof(ldap_userdir_config));
 
+	newcfg->servers = AP_MAKE_ARRAY(p, 2, sizeof(char *));
+
 #if LDAP_API_VERSION < 2000
 	newcfg->port = -1;
 #endif /* LDAP_API_VERSION < 2000 */
+
 	newcfg->search_scope = -1;
 	newcfg->protocol_version = -1;
+
 #ifdef STANDARD20_MODULE_STUFF
 	newcfg->cache_timeout = -1;
 #endif
+
 #ifdef TLS
 	newcfg->use_tls = -1;
 #endif /* TLS */
 
-	newcfg->got_url = 0;
-
 #ifdef STANDARD20_MODULE_STUFF
 	newcfg->homedirHt = apr_hash_make(p);
 #endif /* STANDARD20_MODULE_STUFF */
+
 	return (void *)newcfg;
 }
 
@@ -199,6 +230,11 @@ merge_ldap_userdir_config(AP_POOL *p, void *server1_conf, void *server2_conf)
 	if (!merged_cfg->userdir) {
 		merged_cfg->userdir = AP_PSTRDUP(p, s_cfg1->userdir);
 	}
+
+	if (!merged_cfg->servers) {
+		merged_cfg->servers = apr_array_copy_hdr(p, s_cfg1->servers);
+	}
+
 #if LDAP_API_VERSION >= 2000
 	if (!merged_cfg->url) {
 		merged_cfg->url = AP_PSTRDUP(p, s_cfg1->url);
@@ -207,7 +243,11 @@ merge_ldap_userdir_config(AP_POOL *p, void *server1_conf, void *server2_conf)
 	if (!merged_cfg->server) {
 		merged_cfg->server = AP_PSTRDUP(p, s_cfg1->server);
 	}
+	if (merged_cfg->port == -1) {
+		merged_cfg->port = s_cfg1->port;
+	}
 #endif /* LDAP_API_VERSION >= 2000 */
+
 	if (!merged_cfg->ldap_dn) {
 		merged_cfg->ldap_dn = AP_PSTRDUP(p, s_cfg1->ldap_dn);
 	}
@@ -232,22 +272,20 @@ merge_ldap_userdir_config(AP_POOL *p, void *server1_conf, void *server2_conf)
 	if (!merged_cfg->gidNumber_attr) {
 		merged_cfg->gidNumber_attr = AP_PSTRDUP(p, s_cfg1->gidNumber_attr);
 	}
-#if LDAP_API_VERSION < 2000
-	if (merged_cfg->port == -1) {
-		merged_cfg->port = s_cfg1->port;
-	}
-#endif /* LDAP_API_VERSION < 2000 */
+
 	if (merged_cfg->search_scope == -1) {
 		merged_cfg->search_scope = s_cfg1->search_scope;
 	}
 	if (merged_cfg->protocol_version == -1) {
 		merged_cfg->protocol_version = s_cfg1->protocol_version;
 	}
+
 #ifdef STANDARD20_MODULE_STUFF
 	if (merged_cfg->cache_timeout == -1) {
 		merged_cfg->cache_timeout = s_cfg1->cache_timeout;
 	}
 #endif /* STANDARD20_MODULE_STUFF */
+
 #ifdef TLS
 	if (merged_cfg->use_tls == -1) {
 		merged_cfg->use_tls = s_cfg1->use_tls;
@@ -308,27 +346,9 @@ set_url(cmd_parms *cmd, void *dummy, const char *arg)
 	}
 #endif /* TLS */
 
-#if LDAP_API_VERSION >= 2000
-	s_cfg->url = AP_PSTRDUP(cmd->pool, arg);
-#else
-	if (url->lud_host != NULL) {
-		s_cfg->server = AP_PSTRDUP(cmd->pool, url->lud_host);
-	}
-	if (url->lud_port != 0) {
-		s_cfg->port = url->lud_port;
-	}
-#endif /* LDAP_API_VERSION >= 2000 */
-	if (url->lud_dn != NULL) {
-		s_cfg->basedn = AP_PSTRDUP(cmd->pool, url->lud_dn);
-	}
-	if (url->lud_filter != NULL) {
-		s_cfg->filter_template = AP_PSTRDUP(cmd->pool, url->lud_filter);
-	}
-	if (url->lud_scope != 0) {
-		s_cfg->search_scope = url->lud_scope;
-	}
-
 	ldap_free_urldesc(url);
+
+	*(char **)AP_PUSH_ARRAY(s_cfg->servers) = AP_PSTRDUP(cmd->pool, arg);
 	return NULL;
 }
 
@@ -345,12 +365,7 @@ set_server(cmd_parms *cmd, void *dummy, const char *arg)
 		return "LDAPUserDirServer must be supplied with the name of an LDAP server.";
 	}
 
-
-#if LDAP_API_VERSION >= 2000
-	s_cfg->url = AP_PSTRCAT(cmd->pool, "ldap://", arg, "/", NULL);
-#else /* LDAP_API_VERSION >= 2000 */
-	s_cfg->server = AP_PSTRDUP(cmd->pool, arg);
-#endif /* LDAP_API_VERSION >= 2000 */
+	*(char **)AP_PUSH_ARRAY(s_cfg->servers) = AP_PSTRDUP(cmd->pool, arg);
 	return NULL;
 }
 
@@ -600,14 +615,14 @@ result2errmsg(const request_rec *r, LDAP *ld, LDAPMessage *result)
 }
 
 static int
-connect_ldap_userdir(ldap_userdir_config *s_cfg)
+_ldap_connect(ldap_userdir_config *s_cfg)
 {
 	int ret, sizelimit = 2, version;
 #if LDAP_API_VERSION >= 2000
 	struct berval bindcred;
 #endif
 
-#if LDAP_API_VERSION >= 2000
+#ifdef HAS_LDAP_INITIALIZE
 	ret = ldap_initialize(&(s_cfg->ld), s_cfg->url);
 	if (ret != LDAP_SUCCESS) {
 # ifdef STANDARD20_MODULE_STUFF
@@ -617,7 +632,7 @@ connect_ldap_userdir(ldap_userdir_config *s_cfg)
 # endif
 		return -1;
 	}
-#else /* LDAP_API_VERSION >= 2000 */
+#else /* HAS_LDAP_INITIALIZE */
 	if ((s_cfg->ld = (LDAP *) ldap_init(s_cfg->server, s_cfg->port)) == NULL) {
 # ifdef STANDARD20_MODULE_STUFF
 		ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: ldap_init() to %s failed: %s", s_cfg->server, strerror(errno));
@@ -626,7 +641,7 @@ connect_ldap_userdir(ldap_userdir_config *s_cfg)
 # endif
 		return -1;
 	}
-#endif /* LDAP_API_VERSION >= 2000 */
+#endif /* HAS_LDAP_INITIALIZE */
 
 	switch (s_cfg->protocol_version) {
 	case 2:
@@ -701,6 +716,88 @@ connect_ldap_userdir(ldap_userdir_config *s_cfg)
 #endif /* LDAP_OPT_SIZELIMIT */
 
 	return 1;
+}
+
+static int
+connect_ldap_userdir(request_rec *r, ldap_userdir_config *s_cfg)
+{
+	int start_server_index;
+	char *item;
+	LDAPURLDesc *url;
+
+	start_server_index = s_cfg->cur_server_index;
+	do {
+		/* We won't have any configured servers if no
+		 * LDAPUserDirServer* directives were specified.
+		 * Fall back and use the SDK default if so.
+		 */
+		if (s_cfg->servers->nelts) {
+			item = ((char **)(s_cfg->servers->elts))[s_cfg->cur_server_index];
+
+			if (ldap_is_ldap_url(item)) {
+				if (ldap_url_parse(item, &url) != LDAP_URL_SUCCESS) {
+#ifdef STANDARD20_MODULE_STUFF
+					ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, NULL, "mod_ldap_userdir: URL %s was valid at startup, but is no longer valid?!", item);
+#else /* STANDARD20_MODULE_STUFF */
+					ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, NULL, "mod_ldap_userdir: URL %s was valid at startup, but is no longer valid?!", item);
+#endif /* STANDARD20_MODULE_STUFF */
+
+					++(s_cfg->cur_server_index);
+					if (s_cfg->cur_server_index >= s_cfg->servers->nelts) {
+						s_cfg->cur_server_index = 0;
+					}
+					continue;
+				}
+
+#ifdef HAS_LDAP_INITIALIZE
+				s_cfg->url = AP_PSTRDUP(r->server->process->pool, item);
+#else /* HAS_LDAP_INITIALIZE */
+				if (url->lud_host != NULL) {
+					s_cfg->server = AP_PSTRDUP(r->server->process->pool, url->lud_host);
+				}
+				if (url->lud_port != 0) {
+					s_cfg->port = url->lud_port;
+				}
+#endif /* HAS_LDAP_INITIALIZE */
+				if (url->lud_dn != NULL) {
+					s_cfg->basedn = AP_PSTRDUP(r->server->process->pool, url->lud_dn);
+				}
+				if (url->lud_filter != NULL) {
+					s_cfg->filter_template = AP_PSTRDUP(r->server->process->pool, url->lud_filter);
+				}
+
+				s_cfg->search_scope = url->lud_scope;
+				if (s_cfg->search_scope == LDAP_SCOPE_BASE) {
+# ifdef STANDARD20_MODULE_STUFF
+					ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_DEBUG, 0, NULL, "mod_ldap_userdir: WARNING: LDAP URL search scopes default to 'base' (not 'sub') and may not be what you want.");
+# else
+					ap_log_error(APLOG_MARK, APLOG_NOERRNO|APLOG_DEBUG, NULL, "mod_ldap_userdir: WARNING: LDAP URL search scopes default to 'base' (not 'sub') and may not be what you want.");
+# endif
+				}
+
+				ldap_free_urldesc(url);
+			} else {
+#ifdef HAS_LDAP_INITIALIZE
+				s_cfg->url = AP_PSTRCAT(r->server->process->pool,
+					"ldap://", item, "/", NULL);
+#else /* HAS_LDAP_INITIALIZE */
+				s_cfg->server = AP_PSTRDUP(r->server->process->pool, item);
+				s_cfg->port = LDAP_PORT;
+#endif /* HAS_LDAP_INITIALIZE */
+			}
+		}
+
+		if (_ldap_connect(s_cfg) == 1) {
+			return 1;
+		}
+
+		++s_cfg->cur_server_index;
+		if (s_cfg->cur_server_index >= s_cfg->servers->nelts) {
+			s_cfg->cur_server_index = 0;
+		}
+	} while (s_cfg->cur_server_index != start_server_index);
+
+	return -1;
 }
 
 static char *
@@ -818,7 +915,7 @@ get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
 	/* If we haven't even connected yet, try to connect. If we still can't
 	   connect, give up. */
 	if (s_cfg->ld == NULL) {
-		if (connect_ldap_userdir(s_cfg) != 1) {
+		if (connect_ldap_userdir(r, s_cfg) != 1) {
 			return NULL;
 		}
 	}
@@ -845,7 +942,7 @@ get_ldap_homedir(ldap_userdir_config *s_cfg, request_rec *r,
 		if (ret == LDAP_SERVER_DOWN) {
 			LDAP_UNBIND(s_cfg->ld);
 
-			if (connect_ldap_userdir(s_cfg) != 1) {
+			if (connect_ldap_userdir(r, s_cfg) != 1) {
 #ifdef STANDARD20_MODULE_STUFF
 				ap_log_rerror(APLOG_MARK, APLOG_NOERRNO|APLOG_ERR, 0, r, "mod_ldap_userdir: LDAP server went away, couldn't reconnect. Declining request.");
 #else
@@ -1202,9 +1299,9 @@ static const command_rec ldap_userdir_cmds[] = {
 #ifdef STANDARD20_MODULE_STUFF
 	AP_INIT_RAW_ARGS("LDAPUserDir", set_ldap_user_dir, NULL, RSRC_CONF,
 	                 "the public subdirectory in users' home directories"),
-	AP_INIT_TAKE1("LDAPUserDirServer", set_server, NULL, RSRC_CONF,
+	AP_INIT_ITERATE("LDAPUserDirServer", set_server, NULL, RSRC_CONF,
 	              "the LDAP directory server that will be used for LDAP UserDir queries"),
-	AP_INIT_TAKE1("LDAPUserDirServerURL", set_url, NULL, RSRC_CONF,
+	AP_INIT_ITERATE("LDAPUserDirServerURL", set_url, NULL, RSRC_CONF,
 	              "the LDAP URL that will be used for LDAP UserDir queries"),
 	AP_INIT_TAKE2("LDAPUserDirDNInfo", set_ldap_dninfo, NULL, RSRC_CONF,
 	              "the DN and password that will be used to bind to the LDAP server when doing LDAP UserDir lookups"),
@@ -1225,9 +1322,9 @@ static const command_rec ldap_userdir_cmds[] = {
 #else /* STANDARD20_MODULE_STUFF */
 	{"LDAPUserDir", set_ldap_user_dir, NULL, RSRC_CONF, RAW_ARGS,
 	 "the public subdirectory in users' home directories"},
-	{"LDAPUserDirServer", set_server, NULL, RSRC_CONF, TAKE1,
+	{"LDAPUserDirServer", set_server, NULL, RSRC_CONF, ITERATE,
 	 "the LDAP directory server that will be used for LDAP UserDir queries"},
-	{"LDAPUserDirServerURL", set_url, NULL, RSRC_CONF, TAKE1,
+	{"LDAPUserDirServerURL", set_url, NULL, RSRC_CONF, ITERATE,
 	 "the LDAP URL that will be used for LDAP UserDir queries"},
 	{"LDAPUserDirDNInfo", set_ldap_dninfo, NULL, RSRC_CONF, TAKE2,
 	 "the DN and password that will be used to bind to the LDAP server when doing LDAP UserDir lookups"},
