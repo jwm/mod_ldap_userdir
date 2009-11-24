@@ -302,68 +302,57 @@ merge_ldap_userdir_config(AP_POOL *p, void *server1_conf, void *server2_conf)
 static const char *
 set_ldap_user_dir(cmd_parms *cmd, void *dummy, const char *arg)
 {
-	char *word;
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 
-	while (*arg) {
-		word = ap_getword_conf(cmd->pool, &arg);
-
-		if (strlen(word) == 0) {
-			return "LDAPUserDir must be supplied with the public subdirectory in users' home directories (for example, 'public_html' or '.').";
-		}
-
-		*(char **)AP_PUSH_ARRAY(s_cfg->userdirs) = word;
+	if (strlen(arg) == 0) {
+		return "LDAPUserDir must be supplied with the public subdirectory in users' home directories (for example, 'public_html' or '.').";
 	}
 
+	*(char **)AP_PUSH_ARRAY(s_cfg->userdirs) = AP_PSTRDUP(cmd->pool, arg);
 	return NULL;
 }
 
 static const char *
 set_url(cmd_parms *cmd, void *dummy, const char *arg)
 {
-	char *word;
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
 	LDAPURLDesc *url;
 
-	while (*arg) {
-		word = ap_getword_conf(cmd->pool, &arg);
-
 #if LDAP_API_VERSION < 2000
-		if (s_cfg->server) {
-			return "LDAPUserDirServerURL can't be combined with LDAPUserDirServer.";
-		}
+	if (s_cfg->server) {
+		return "LDAPUserDirServerURL can't be combined with LDAPUserDirServer.";
+	}
 #endif /* LDAP_API_VERSION < 2000 */
-		if (s_cfg->basedn || s_cfg->filter_template || s_cfg->search_scope != -1) {
-			return "LDAPUserDirServerURL can't be combined with LDAPUserDirBaseDN, LDAPUserDirFilter, or LDAPUserDirSearchScope.";
-		}
-		s_cfg->got_url = 1;
+	if (s_cfg->basedn || s_cfg->filter_template || s_cfg->search_scope != -1) {
+		return "LDAPUserDirServerURL can't be combined with LDAPUserDirBaseDN, LDAPUserDirFilter, or LDAPUserDirSearchScope.";
+	}
+	s_cfg->got_url = 1;
 
-		if (ldap_url_parse(word, &url) != LDAP_SUCCESS) {
-			return "LDAPUserDirServerURL must be supplied with a valid LDAP URL.";
-		}
+	if (ldap_url_parse(arg, &url) != LDAP_SUCCESS) {
+		return "LDAPUserDirServerURL must be supplied with a valid LDAP URL.";
+	}
 
 #ifdef HAVE_LDAPURLDESC_LUD_SCHEME
 # define SCHEME_IS(scheme) \
-		((strlen(url->lud_scheme) == strlen(scheme) - 1) && \
-		 (strncasecmp(url->lud_scheme, scheme, strlen(scheme) - 1) == 0))
+	((strlen(url->lud_scheme) == strlen(scheme) - 1) && \
+	 (strncasecmp(url->lud_scheme, scheme, strlen(scheme) - 1) == 0))
 #else /* HAVE_LDAPURLDESC_LUD_SCHEME */
-# define SCHEME_IS(scheme) (strncasecmp(word, scheme, strlen(scheme)) == 0)
+# define SCHEME_IS(scheme) (strncasecmp(arg, scheme, strlen(scheme)) == 0)
 #endif /* HAVE_LDAPURLDESC_LUD_SCHEME */
 
-		if (!SCHEME_IS("ldaps:") && !SCHEME_IS("ldap:")) {
-			return "Invalid scheme specified by LDAPUserDirServerURL. Valid schemes are 'ldap' or 'ldaps'.";
-		}
-
-#ifdef TLS
-		if (SCHEME_IS("ldaps:") && s_cfg->use_tls != -1) {
-			return "ldaps:// scheme in LDAPUserDirServerURL can't be combined with LDAPUserDirUseTLS.";
-		}
-#endif /* TLS */
-
-		ldap_free_urldesc(url);
-		*(char **)AP_PUSH_ARRAY(s_cfg->servers) = AP_PSTRDUP(cmd->pool, word);
+	if (!SCHEME_IS("ldaps:") && !SCHEME_IS("ldap:")) {
+		return "Invalid scheme specified by LDAPUserDirServerURL. Valid schemes are 'ldap' or 'ldaps'.";
 	}
 
+#ifdef TLS
+	if (SCHEME_IS("ldaps:") && s_cfg->use_tls != -1) {
+		return "ldaps:// scheme in LDAPUserDirServerURL can't be combined with LDAPUserDirUseTLS.";
+	}
+#endif /* TLS */
+
+	ldap_free_urldesc(url);
+
+	*(char **)AP_PUSH_ARRAY(s_cfg->servers) = AP_PSTRDUP(cmd->pool, arg);
 	return NULL;
 }
 
