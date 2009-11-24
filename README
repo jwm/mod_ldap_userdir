@@ -1,4 +1,4 @@
-mod_ldap_userdir v1.1.16
+mod_ldap_userdir v1.1.17
 ========================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
@@ -39,8 +39,8 @@ the source distribution.
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.16.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1.16
+* gzip -dc mod_ldap_userdir-1.1.17.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.17
 * ./configure --with-activate
   Run './configure --help' for information on other build options.
 * make
@@ -84,6 +84,21 @@ the source distribution.
 ==========
 4. Changes
 ==========
+
+v1.1.17:
+* Implement an internal failover mechanism instead of relying on the LDAP
+  SDK's built-in failover (if any). Fixes failover regression introduced
+  in v1.1.13 when ldap_initialize() was first used.
+* Multiple LDAP URL arguments may now be passed to LDAPUserDirServerURL:
+
+  LDAPUserDirServerURL ldap://127.0.0.1/??sub ldap://172.16.0.1/??sub
+* Portability fix: don't use ldap_initialize() and ldap_unbind_ext_s()
+  unless we're building against the corresponding versions of the OpenLDAP
+  SDK.
+* Updated documentation to mention using "." (the current directory) when
+  the user's home directory itself should be exposed, instead of a
+  subdirectory below it. Thanks to Peter Tselios <tselios.petros@gmail.com>
+  for mentioning this issue.
 
 v1.1.16:
 * TLS support was not being enabled when the --with-tls option was
