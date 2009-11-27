@@ -8,10 +8,9 @@
 
   Example: LDAPUserDirServer server.example.com
 
-  For failover, multiple servers can be specified, separated by spaces.
-  All server names must be enclosed in the same set of quotes.
+  For failover, multiple servers can be specified.
 
-  Example: LDAPUserDirServer "server1.example.com server2.example.com"
+  Example: LDAPUserDirServer server1.example.com server2.example.com
 
 * LDAPUserDirServerURL
   The LDAP URL to use. The attributes and extensions fields of the URL are
@@ -21,6 +20,10 @@
   with '%3D', ',' with '%2C', '%' with '%25', etc).
 
   Example: LDAPUserDirServerURL ldap://server.example.com/dc%3Dexample%2Cdc%3Dcom??sub?(uid=%25v)
+
+  For failover, multiple URLs can be specified.
+
+  Example: LDAPUserDirServerURL ldap://server.example.com/dc%3Dexample%2Cdc%3Dcom??sub?(uid=%25v) ldap://server2.example.com/dc%3Dexample%2Cdc%3Dcom??sub?(uid=%25v)
 
 * LDAPUserDirDNInfo
   The DN and password to use when binding to the LDAP server. If this
@@ -66,7 +69,7 @@
   Example: LDAPProtocolVersion 3
 
 * LDAPUserDirUseTLS
-  Whether to use an encrypted (TLS/SSL) connection to the LDAP server.
+  Whether to use an encrypted (TLS) connection to the LDAP server.
 
   Example: LDAPUserDirUseTLS off
 
