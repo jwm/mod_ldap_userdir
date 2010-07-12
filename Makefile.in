@@ -4,7 +4,7 @@ LDFLAGS=@LDFLAGS@
 LIBS=@LIBS@
 TLS=@TLS@
 ACTIVATE=@ACTIVATE@
-TARGET=@TARGET@
+TARGET=.libs/mod_ldap_userdir.so
 
 $(TARGET): Makefile mod_ldap_userdir.c
 	$(APXS) -c $(CPPFLAGS) $(LDFLAGS) $(LIBS) $(TLS) mod_ldap_userdir.c

@@ -1,4 +1,4 @@
-mod_ldap_userdir v1.1.17
+mod_ldap_userdir v1.1.18
 ========================
 
 mod_ldap_userdir is a module that enables the Apache web server to look up
@@ -39,8 +39,8 @@ the source distribution.
 3. How do I install and set up mod_ldap_userdir?
 ================================================
 
-* gzip -dc mod_ldap_userdir-1.1.17.tar.gz | tar xf -
-* cd mod_ldap_userdir-1.1.17
+* gzip -dc mod_ldap_userdir-1.1.18.tar.gz | tar xf -
+* cd mod_ldap_userdir-1.1.18
 * ./configure --with-activate
   Run './configure --help' for information on other build options.
 * make
@@ -84,6 +84,12 @@ the source distribution.
 ==========
 4. Changes
 ==========
+
+v1.1.18:
+* Remove Apache 1.3.x support. Apache 1.3.x has been end of life since
+  January 2010.
+* Use remote path to the source tarball in the included .spec, which
+  makes 'rpmbuild -tb' work on the source tarball.
 
 v1.1.17:
 * Implement an internal failover mechanism instead of relying on the LDAP

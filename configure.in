@@ -52,15 +52,6 @@ else
 	AC_MSG_ERROR(Cannot build mod_ldap_userdir without a valid apxs program)
 fi
 
-# There must be a better way, but I've yet to find it.
-if echo $APXS | fgrep apxs2 >/dev/null; then
-	TARGET=.libs/mod_ldap_userdir.so
-elif echo $APXS | fgrep apache2 >/dev/null; then
-	TARGET=.libs/mod_ldap_userdir.so
-else
-	TARGET=mod_ldap_userdir.so
-fi
-
 AC_CHECK_LIB(lber, ber_init)
 AC_CHECK_LIB(ldap, ldap_init,
 	found_openldap_libs=yes; LIBS="-lldap $LIBS",
@@ -92,9 +83,12 @@ AS_IF([test "x$enable_tls" != xno],
 	[AC_CHECK_FUNC(ldap_start_tls_s, TLS=-DTLS)]
 )
 
-AC_SUBST(APXS TARGET)
-AC_SUBST(CPPFLAGS LDFLAGS LIBS)
-AC_SUBST(TLS ACTIVATE)
+AC_SUBST(APXS)
+AC_SUBST(CPPFLAGS)
+AC_SUBST(LDFLAGS)
+AC_SUBST(LIBS)
+AC_SUBST(TLS)
+AC_SUBST(ACTIVATE)
 
 AC_CONFIG_HEADER(config.h)
 AC_OUTPUT(Makefile)

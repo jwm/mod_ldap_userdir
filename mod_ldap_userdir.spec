@@ -6,10 +6,10 @@
 %define		__module_name	ldap_userdir
 
 Name:		mod_%{__module_name}
-Version:	1.1.17
+Version:	1.1.18
 Release:	1
 URL:		http://horde.net/~jwm/software/mod_ldap_userdir/
-Source:		%{name}-%{version}.tar.bz2
+Source:		http://horde.net/~jwm/software/mod_ldap_userdir/%{name}-%{version}.tar.bz2
 Source1:	%{__module_name}.conf
 Group:		System Environment/Daemons
 License:	GPL
