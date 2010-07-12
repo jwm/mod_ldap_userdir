@@ -1,7 +1,7 @@
 #	conditional build:	
 #		'_with_tls'	if	'--with tls'
 #	e.g.,
-#		'rpmbuild --with tls -bt mod_ldap_userdir-1.1.17.tar.bz2'
+#		'rpmbuild --with tls -bt mod_ldap_userdir-1.1.18.tar.bz2'
 
 %define		__module_name	ldap_userdir
 
