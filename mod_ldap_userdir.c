@@ -23,7 +23,7 @@
  */
 
 /*
- * mod_ldap_userdir v1.1.18
+ * mod_ldap_userdir v1.1.19
  *
  * Description: A module for the Apache web server that performs UserDir
  * (home directory) lookups from an LDAP directory.
@@ -410,11 +410,29 @@ set_use_tls(cmd_parms *cmd, void *dummy, int arg)
 {
 #ifdef TLS
 	ldap_userdir_config *s_cfg = (ldap_userdir_config *) ap_get_module_config(cmd->server->module_config, &ldap_userdir_module);
+	int i;
+	char *item;
+	LDAPURLDesc *url;
 
-	if (arg == 1 && s_cfg->got_url &&
-	    strncasecmp(s_cfg->url, "ldaps:", 6) == 0) {
+	if (arg == 1) {
+		for (i = 0; i < s_cfg->servers->nelts; ++i) {
+			item = ((char **)(s_cfg->servers->elts))[i];
 
-		return "LDAPUserDirUseTLS can't be combined with ldaps:// in LDAPUserDirServerURL.";
+			if (!ldap_is_ldap_url(item)) {
+				/* We default to plaintext LDAP for bare hosts. */
+				continue;
+			}
+			if (ldap_url_parse(item, &url) != LDAP_URL_SUCCESS) {
+				/* set_url should have syntax checked the URL,
+				 * so this should never happen.
+				 */
+				continue;
+			}
+
+			if (strcasecmp(url->lud_scheme, "ldaps") == 0) {
+				return "LDAPUserDirUseTLS can't be combined with ldaps:// in LDAPUserDirServerURL.";
+			}
+		}
 	}
 	if (s_cfg->protocol_version < 3 && s_cfg->protocol_version != -1) {
 		return "LDAPProtocolVersion must be set to version 3 to use the LDAPUserDirUseTLS directive.";
@@ -530,7 +548,7 @@ init_ldap_userdir(apr_pool_t *pconf, apr_pool_t *plog,
 		apply_config_defaults(s_cfg);
 	}
 
-	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.18");
+	ap_add_version_component(pconf, "mod_ldap_userdir/1.1.19");
 	return OK;
 }
 
